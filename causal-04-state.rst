@@ -1,8 +1,8 @@
-Mutable state
-=============
+Pseudo-mutable state
+====================
 
-Union of events vs mutable shared state
----------------------------------------
+Union of events vs pseudo-mutable shared state
+----------------------------------------------
 
 Global state
 ------------
