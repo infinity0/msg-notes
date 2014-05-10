@@ -9,9 +9,9 @@ Partial and causal orders
 =========================
 
 A `partial ordering`_ is a set of elements with a binary relation |le| that
-is reflexive, antisymmetric, and transitive. Its `transitive reduction`_ can
-be represented as a `directed acyclic graph`_ (DAG), where nodes represent
-the elements, and paths represent the relationships.
+is reflexive, antisymmetric, and transitive. It can be represented as a
+`directed acyclic graph`_ (DAG), where nodes represent the elements, and paths
+represent the relationships. [#Nred]_
 
 Using this structure, we can begin to model messages in a distributed system
 for a group communications session.
@@ -53,7 +53,7 @@ set of ancestors of m, including m. This set can be interpreted as the
 possible "causes" of m.
 
 In our scheme, each message m declares its immediate predecessors P =
-pre(m). This defines a few relationships: |ForAll| p |in| P: p |le| m.
+**pre(m)**. This defines a few relationships: |ForAll| p |in| P: p |le| m.
 *Immediate* means also that there is nothing between them, i.e. |NotExists|
 q: p |le| q |le| m. (This is why we drew |leftarrow| for |le| in the above
 graph, rather than |rightarrow| - the pointers belong to the later message;
@@ -84,6 +84,10 @@ discuss further.
 .. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
 .. _Directed acyclic graph: https://en.wikipedia.org/wiki/Directed_acyclic_graph
 .. _Topological order: https://en.wikipedia.org/wiki/Topological_sort
+.. _Covering relation: https://en.wikipedia.org/wiki/Covering_relation
+
+.. [#Nred] Technically, it is the `transitive reduction`_ that is represented
+    by the graph, where each edge represents a `covering relation`_.
 
 .. [#Nsep] Some other systems treat send vs deliver (of each message m) as two
     separate events, but we don't do this for simplicity. The sender
@@ -107,18 +111,21 @@ delivering m. Not doing this breaks the transitivity property of the parent
 pointers, and results in more complexity (TODO: elaborate).
 
 This already lets us detect messages that are received out-of-order, as well
-as *causal drops* - drops of messages that caused a message we *have*
-received. For the latter case, we can have a grace period waiting for parent
-messages to arrive, after which we can emit a UI warning, or perform
-recovery techniques such as asking for a resend (covered in later sections).
+as *causal drops* - drops of messages that caused (i.e. are *before*) a
+message we *have* received. For the former case, recovery is straightforward
+and we don't need to bother the user. For the latter, we can have a grace
+period waiting for parent messages to arrive, after which we can emit a UI
+warning ("timed out waiting for intermediate messages"), or perform recovery
+techniques such as asking for a resend (covered in later sections).
 
-If the first message is fresh, we also inductively gain freshness assurance
-(and replay protection) for the entire session, since unforgeable pointers
-to previous fresh parent messages are included within each message.
+If the first message is non-replayable (e.g. if it is fresh), we also
+inductively gain replay protection for the entire session. This is because
+each message contains unforgeable pointers to previous parent messages, so
+everything is "anchored" to the first non-replayable message.
 
-Detecting *non-causal drops* - drops of new messages that *didn't* cause a
-message we received (and therefore aren't referred-to by them), is more
-complex, and techniques for this will be covered in a later section.
+Detecting *non-causal drops* - drops of messages *not-before* a message
+we've already received (and therefore we don't see any references to), is
+more complex, and techniques for this will be covered in a later section.
 
 Invariants
 ----------
