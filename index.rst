@@ -19,6 +19,11 @@ Contents:
 
 TODO: Introduction
 
+TODO: our model of "private group chat"
+
+During the session, agents broadcast messages to each other. Every message
+is broadcast to all the current participants, but they may be received at
+different times for everyone, out-of-order, or not received at all.
 
 Indices and tables
 ==================
