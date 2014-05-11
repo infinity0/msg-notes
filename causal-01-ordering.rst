@@ -5,23 +5,21 @@ Ordering
 .. include:: <isotech.txt>
 .. include:: <mmlalias.txt>
 
-Partial and causal orders
-=========================
+Partial orders
+==============
 
 A `partial ordering`_ is a set of elements with a binary relation |le| that
 is reflexive, antisymmetric, and transitive. It can be represented as a
-`directed acyclic graph`_ (DAG), where nodes represent the elements, and paths
-represent the relationships. [#Nred]_
-
-Using this structure, we can begin to model messages in a distributed system
-for a group communications session.
+`directed acyclic graph`_ (DAG), where nodes represent the elements, and
+paths represent the relationships. Using this structure, we can begin to
+model messages in a distributed system for a group communications session.
 
 Each node m |in| M represents a message, sent by a sender u |in| U. [#Nsep]_
 The relation a |le| b (a "*before*" b) means that the sender of b knew the
 contents of a, when they wrote b. As a shortcut, let us also define |ge|
-("after") such that a |ge| b |iff| b |le| a. Note that in a partial order, ¬
-(a |le| b) does *not* imply a |ge| b. That is, we can talk about *before*
-and *not-before* separately from *after* and *not-after*.
+("after") such that a |ge| b |iff| b |le| a, and |perp| ("independent") such
+that a |perp| b |iff| (¬ a |le| b |and| ¬ a |ge| b). Note that in a partial
+order, ¬ (a |le| b) does *not* imply a |ge| b.
 
 .. digraph:: relations
 
@@ -53,18 +51,25 @@ set of ancestors of m, including m. This set can be interpreted as the
 possible "causes" of m.
 
 In our scheme, each message m declares its immediate predecessors P =
-**pre(m)**. This defines a few relationships: |ForAll| p |in| P: p |le| m.
-*Immediate* means also that there is nothing between them, i.e. |NotExists|
-q: p |le| q |le| m. (This is why we drew |leftarrow| for |le| in the above
-graph, rather than |rightarrow| - the pointers belong to the later message;
-one cannot predict in advance what messages will come *after* yours).
+**pre(m)**. This defines a few relationships: |forall| p |in| P: p < m.
+(This is why we drew |leftarrow| for |le| in the above graph, rather than
+|rightarrow| - the pointers belong to the later message; one cannot predict
+in advance what messages will come *after* yours.) *Immediate* means that
+there is nothing between them, i.e. |NotExists| q: p < q < m. One result of
+this is that all parents (from now on we'll exclusively use this term) must
+be causally independent of each other.
 
-We choose only to declare immediate predecessors, in order to eliminate
-redundant information from the contents of a message. TODO: expand why this
-is good from a security POV.
+Our definition means that pre(m) forms a `transitive reduction`_ of |le|.
+This eliminates redundant information from the contents of a message. This
+is good, because redundant information is a security liability - it needs to
+be checked for consistency, from the "canonical" sources of the information,
+but then we might as well use those sources to directly calculate this
+information. TODO: give an attack example for vector clocks. Here, enforcing
+immediacy and independence actually lets us achieve some stronger guarantees
+"for free", as we will see below.
 
 In a real implementation, there are several options for representing nodes
-and edges (messages and pointers to messages). One simple option, is to
+and edges (i.e. messages and pointers to messages). One simple option, is to
 broadcast the same authenticated-encrypted blob to everyone, treat this blob
 as the content of the message, and use a hash function to reduce the content
 into a pointer (identifier) that later messages can include. This ensures
@@ -84,10 +89,6 @@ discuss further.
 .. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
 .. _Directed acyclic graph: https://en.wikipedia.org/wiki/Directed_acyclic_graph
 .. _Topological order: https://en.wikipedia.org/wiki/Topological_sort
-.. _Covering relation: https://en.wikipedia.org/wiki/Covering_relation
-
-.. [#Nred] Technically, it is the `transitive reduction`_ that is represented
-    by the graph, where each edge represents a `covering relation`_.
 
 .. [#Nsep] Some other systems treat send vs deliver (of each message m) as two
     separate events, but we don't do this for simplicity. The sender
@@ -127,29 +128,77 @@ Detecting *non-causal drops* - drops of messages *not-before* a message
 we've already received (and therefore we don't see any references to), is
 more complex, and techniques for this will be covered in a later section.
 
-Invariants
-----------
-
-Before we move further, let us define some additional constraints on top of
-our partial order. Recall that in a partial order, |le| is reflexive,
-anti-symmetric, and transitive. In a causal order, where each message is
-associated with a sender u, we have some additional structure:
-
-- send total-ordering: all messages from each sender are totally-ordered.
-
-  Formally, for all u: for all m, m' in msg(u): m |le| m' or m' |le| m
-
-- freshness-consistency: a message m cannot declare a parent that is
-  strictly before a parent of a previous message m' < m.
-
-  Formally, for all m, m' in G: m |le| m' |Implies| anc(pre(m)) |sube|
-  anc(p') for all p' in pre(m'). TODO: this is wrong, correct it
-
-Another way of saying this is that the context always advances. TODO: define *context* here.
+Causal orders
+=============
 
 We can do a lot of things already with just the partial-order structure, but
 the causal-order structure offers better guarantees and enables more complex
-behaviours, so we thought we'd introduce it early.
+behaviours.
+
+In a causal order, each message is associated with a sender u.
+TODO: define by(u), context(m).
+
+We also have the following intuitive constraint, which we'll call freshness
+consistency: all messages must declare a context that is strictly-later than
+the context of strictly-earlier messages. Or, in other words, a message may
+not declare a parent that is *before* a parent of a strictly-earlier message.
+
+- |forall| m', m |in| <: context(m') |sqsubset| context(m) (or equivalently)
+  |forall| p' |in| pre(m'), p |in| pre(m): ¬ p |le| p' (TODO: prove the equiv)
+
+.. digraph:: freshness_consistency
+
+    rankdir=RL;
+    node [height=0.5, width=0.5, style=filled];
+    a [fillcolor="#6666ff"];
+    b [fillcolor="#6666ff"];
+    c [fillcolor="#66ff66"];
+    d [fillcolor="#66ff66"];
+
+    d -> c -> b -> a;
+    d -> a [color="#ff0000"];
+
+Colours represent authorship; freshness consistency forbids the a
+|leftarrow| d pointer. TODO: lay this out better.
+
+**Theorem**: *transitive reduction* entails *freshness consistency*. Proof
+sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since
+|le| is transitive, |forall| p' |in| pre(m'): p' |in| anc(p). By transitive
+reduction, no other q |ne| p |in| pre(m) may belong to anc(p), and therefore
+¬ q |le| p' (for all p', q) as required. []
+
+In other words, if we enforce transitive reduction, which is straightforward
+to define and test for, we automatically gain freshness consistency, which
+is more complex to define and test for. (The merge algorithm, covered in a
+later section, includes a check that the parents form an anti-chain.)
+
+Invariants
+----------
+
+Let us summarise the invariants on our data structure. Real implementations
+may implement these as heavyweight unit tests.
+
+- |le| is reflexive:
+
+  |forall| a: a |le| a
+
+- |le| is anti-symmetric:
+
+  |forall| a, b: a |le| b |and| b |le| a |implies| a = b
+
+- |le| is transitive:
+
+  |forall| a, b, c: a |le| b |and| b |le| c |implies| a |le| c
+
+- pre(m) is an anti-chain and forms a transitive reduction of |le|:
+
+  |forall| m: |forall| p, p' |in| pre(m): p |perp| p'
+
+  as above, this entails freshness consistency
+
+- by(u) is a chain / total-order:
+
+  |forall| u: |forall| m, m' |in| by(u): m |le| m' |or| m' |le| m
 
 Linear ordering and display
 ===========================
