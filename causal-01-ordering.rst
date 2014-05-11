@@ -149,17 +149,31 @@ not declare a parent that is *before* a parent of a strictly-earlier message.
 .. digraph:: freshness_consistency
 
     rankdir=RL;
-    node [height=0.5, width=0.5, style=filled];
-    a [fillcolor="#6666ff"];
-    b [fillcolor="#6666ff"];
-    c [fillcolor="#66ff66"];
-    d [fillcolor="#66ff66"];
+    node [height=0.5, width=0.5];
 
-    d -> c -> b -> a;
-    d -> a [color="#ff0000"];
+    subgraph clusterA {
+        label="by(A)";
+        labeljust="r";
+        1 2;
+        node [style=invis] r s;
+    }
 
-Colours represent authorship; freshness consistency forbids the a
-|leftarrow| d pointer. TODO: lay this out better.
+    subgraph clusterB {
+        label="by(B)";
+        labeljust="r";
+        3 4;
+        node [style=invis] p q;
+    }
+
+    4 -> 3 [weight=4];
+    2 -> 1 [weight=4];
+    3 -> 2;
+    4 -> 1 [color="#ff0000", headport=se, tailport=nw];
+
+    3 -> p -> q [weight=2, style=invis];
+    r -> s -> 2 [weight=2, style=invis];
+
+Freshness consistency forbids the 1 |leftarrow| 4 pointer.
 
 **Theorem**: *transitive reduction* entails *freshness consistency*. Proof
 sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since
