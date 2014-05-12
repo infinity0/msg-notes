@@ -15,7 +15,7 @@ paths represent the relationships. Using this structure, we can begin to
 model messages in a distributed system for a group communications session.
 
 Each node m |in| M represents a message, sent by a sender u |in| U. [#Nsep]_
-The relation a |le| b (a "*before*" b) means that the sender of b knew the
+The relation a |le| b (a "before" b) means that the sender of b knew the
 contents of a, when they wrote b. As a shortcut, let us also define |ge|
 ("after") such that a |ge| b |iff| b |le| a, and |perp| ("independent") such
 that a |perp| b |iff| (¬ a |le| b |and| ¬ a |ge| b). Note that in a partial
@@ -54,7 +54,7 @@ In our scheme, each message m declares its immediate predecessors P =
 **pre(m)**. This defines a few relationships: |forall| p |in| P: p < m.
 (This is why we drew |leftarrow| for |le| in the above graph, rather than
 |rightarrow| - the pointers belong to the later message; one cannot predict
-in advance what messages will come *after* yours.) *Immediate* means that
+in advance what messages will come after yours.) *Immediate* means that
 there is nothing between them, i.e. |NotExists| q: p < q < m. One result of
 this is that all parents (from now on we'll exclusively use this term) must
 be causally independent of each other ("form an `anti-chain`_").
@@ -125,9 +125,9 @@ inductively gain replay protection for the entire session. This is because
 each message contains unforgeable pointers to previous parent messages, so
 everything is "anchored" to the first non-replayable message.
 
-Detecting *non-causal drops* - drops of messages *not-before* a message
-we've already received (and therefore we don't see any references to), is
-more complex, and techniques for this will be covered in a later section.
+Detecting *non-causal drops* - drops of messages not-before a message we've
+already received (and therefore we don't see any references to), is more
+complex, and techniques for this will be covered in a later section.
 
 Causal orders
 =============
@@ -165,7 +165,7 @@ enables certain re-ordering attacks. TODO: give an example of this. To
 protect against this, we define *freshness consistency*: all messages must
 have a context that is strictly more advanced than the context of strictly
 earlier messages. Or, in other words, a message may not declare a parent
-that is *before* a parent of a strictly earlier message. Formally:
+that is before a parent of a strictly earlier message. Formally:
 
 |forall| m', m |in| <: context(m') |sqsubset| context(m) (or equivalently)
 |forall| p' |in| pre(m'), p |in| pre(m): ¬ p |le| p' (TODO: prove the equiv)
