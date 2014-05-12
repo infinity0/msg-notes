@@ -57,16 +57,16 @@ In our scheme, each message m declares its immediate predecessors P =
 in advance what messages will come *after* yours.) *Immediate* means that
 there is nothing between them, i.e. |NotExists| q: p < q < m. One result of
 this is that all parents (from now on we'll exclusively use this term) must
-be causally independent of each other.
+be causally independent of each other ("form an `anti-chain`_").
 
 Our definition means that pre(m) forms a `transitive reduction`_ of |le|.
 This eliminates redundant information from the contents of a message. This
 is good, because redundant information is a security liability - it needs to
 be checked for consistency, from the "canonical" sources of the information,
 but then we might as well use those sources to directly calculate this
-information. TODO: give an attack example for vector clocks. Here, enforcing
-immediacy and independence actually lets us achieve some stronger guarantees
-"for free", as we will see below.
+information. Here, enforcing immediacy and independence actually lets us
+achieve some stronger guarantees "for free" - e.g., protection against
+rewinding of vector clocks, a few paragraphs below.
 
 In a real implementation, there are several options for representing nodes
 and edges (i.e. messages and pointers to messages). One simple option, is to
@@ -89,17 +89,18 @@ discuss further.
 .. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
 .. _Directed acyclic graph: https://en.wikipedia.org/wiki/Directed_acyclic_graph
 .. _Topological order: https://en.wikipedia.org/wiki/Topological_sort
+.. _Anti-chain: https://en.wikipedia.org/wiki/Antichain
 
 .. [#Nsep] Some other systems treat send vs deliver (of each message m) as two
     separate events, but we don't do this for simplicity. The sender
-    delivers m to itself *immediately* after he sends it, so the system will
+    delivers m to itself *immediately* after they send it, so the system will
     never see an event that is after send[m] but not-after deliver[m]; nor
     an event that is before deliver[m] but not-before send[m].
 
 .. [#Neng] In natural language, |le| is really *before or equal to*. We say
     *before* here because that's shorter. We use |le| instead of < because
     that makes most formal descriptions shorter. Unless otherwise specified,
-    we'll use *before* for |le| and *strictly-before* for <, and likewise
+    we'll use *before* for |le| and *strictly before* for <, and likewise
     for *after* and |ge|.
 
 Detecting replays, reorders, and causal drops
@@ -131,49 +132,73 @@ more complex, and techniques for this will be covered in a later section.
 Causal orders
 =============
 
-We can do a lot of things already with just the partial-order structure, but
-the causal-order structure offers better guarantees and enables more complex
-behaviours.
+We can do a lot of things already with just a partial order, but adding some
+extra structure results in stronger guarantees and enables more complex
+behaviours. We do not make immediate use of this extra structure, but we
+introduce them now, to identify some intuitive properties missing from a
+partial order, and so that you are familiar with them later.
 
-In a causal order, each message is associated with a sender u.
-TODO: define by(u), context(m).
+In a causal ordering, each message is associated with exactly one *sender*
+and a set of *recipients*, collectively called its *members*. Define
+**by(u)** as the set of all messages sent by u. This set is totally-ordered
+on |le|, i.e. every element is either before or after every other. Roughly,
+this constrains the number of branches that may exist at any point, and
+helps the graph be "more linear".
 
-We also have the following intuitive constraint, which we'll call freshness
-consistency: all messages must declare a context that is strictly-later than
-the context of strictly-earlier messages. Or, in other words, a message may
-not declare a parent that is *before* a parent of a strictly-earlier message.
+Often, we'll find it useful to refer to the subjective session-view that a
+sender has when they send a message. Define **context(m)** as a mapping
+members(m) |rightarrow| anc(m), such that context(m)(u) is the latest
+message by u seen by the sender of m, or |bot| ("null") if no such message
+exists. Formally:
 
-- |forall| m', m |in| <: context(m') |sqsubset| context(m) (or equivalently)
-  |forall| p' |in| pre(m'), p |in| pre(m): ¬ p |le| p' (TODO: prove the equiv)
+context(m): members(m) |rightarrow| anc(m) =
+u |mapsto| max(by(u) |cap| anc(m))
+
+where max() gives the maximum element of a totally-ordered set, or |bot| if
+it is empty. We say a context c |sqsubset| c' ("strictly less advanced")
+iff |forall| u: c(u) = |bot| |or| c(u) |le| c'(u) and c |ne| c'.
+
+Context is structurally equivalent to a `vector clock`_. As with vector
+clocks, malicious senders may "rewind" the context they are supposed to
+declare with each message. If this redundant information is trusted, this
+enables certain re-ordering attacks. TODO: give an example of this. To
+protect against this, we define *freshness consistency*: all messages must
+have a context that is strictly more advanced than the context of strictly
+earlier messages. Or, in other words, a message may not declare a parent
+that is *before* a parent of a strictly earlier message. Formally:
+
+|forall| m', m |in| <: context(m') |sqsubset| context(m) (or equivalently)
+|forall| p' |in| pre(m'), p |in| pre(m): ¬ p |le| p' (TODO: prove the equiv)
 
 .. digraph:: freshness_consistency
 
     rankdir=RL;
     node [height=0.5, width=0.5];
+    edge [weight=2];
 
     subgraph clusterA {
         label="by(A)";
         labeljust="r";
-        1 2;
-        node [style=invis] r s;
+        2 -> 1;
+        node [style=invis];
+        r -> s -> 2 [style=invis];
     }
 
     subgraph clusterB {
         label="by(B)";
         labeljust="r";
-        3 4;
-        node [style=invis] p q;
+        4 -> 3;
+        node [style=invis];
+        3 -> p -> q [style=invis];
     }
 
-    4 -> 3 [weight=4];
-    2 -> 1 [weight=4];
+    edge [weight=1];
     3 -> 2;
     4 -> 1 [color="#ff0000", headport=se, tailport=nw];
 
-    3 -> p -> q [weight=2, style=invis];
-    r -> s -> 2 [weight=2, style=invis];
-
-Freshness consistency forbids the 1 |leftarrow| 4 pointer.
+Freshness consistency forbids the 1 |leftarrow| 4 pointer. This may seem like
+quite a complex property to enforce, but actually we do not need to directly
+enforce it.
 
 **Theorem**: *transitive reduction* entails *freshness consistency*. Proof
 sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since
@@ -181,10 +206,17 @@ sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since
 reduction, no other q |ne| p |in| pre(m) may belong to anc(p), and therefore
 ¬ q |le| p' (for all p', q) as required. []
 
-In other words, if we enforce transitive reduction, which is straightforward
-to define and test for, we automatically gain freshness consistency, which
-is more complex to define and test for. (The merge algorithm, covered in a
-later section, includes a check that the parents form an anti-chain.)
+So, we recommend that a real implementation should not encode context(m)
+explicitly, since it is redundant information that can lead to attacks.
+Instead, one should enforce that pre(m) is an anti-chain [#Nred]_, which
+automatically achieves freshness consistency. Then, one may locally
+calculate context(m) from pre(m), using the following recursive algorithm:
+TODO: write this, perhaps in the appendix.
+
+.. _Vector clock: https://en.wikipedia.org/wiki/Vector_clock
+
+.. [#Nred] The merge algorithm, covered in a later section, includes a check
+    that pre(m) forms an anti-chain.
 
 Invariants
 ----------
