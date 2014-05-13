@@ -201,10 +201,11 @@ quite a complex property to enforce, but actually we do not need to directly
 enforce it.
 
 **Theorem**: *transitive reduction* entails *freshness consistency*. Proof
-sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since
-|le| is transitive, |forall| p' |in| pre(m'): p' |in| anc(p). By transitive
-reduction, no other q |ne| p |in| pre(m) may belong to anc(p), and therefore
-¬ q |le| p' (for all p', q) as required. []
+sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since |le| is
+transitive, |forall| p' |in| pre(m'): p' < p |equiv| anc(p') |subset|
+anc(p). By transitive reduction, no other q |ne| p |in| pre(m) may belong to
+anc(p), so q |notin| anc(p') |equiv| ¬ q |le| p' (for all p', q) as
+required. []
 
 So, we recommend that a real implementation should not encode context(m)
 explicitly, since it is redundant information that can lead to attacks.
