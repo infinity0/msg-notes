@@ -53,11 +53,11 @@ possible "causes" of m.
 In our scheme, each message m declares its immediate predecessors P =
 **pre(m)**. This defines a few relationships: |forall| p |in| P: p < m.
 (This is why we drew |leftarrow| for |le| in the above graph, rather than
-|rightarrow| - the pointers belong to the later message; one cannot predict
-in advance what messages will come after yours.) *Immediate* means that
-there is nothing between them, i.e. |NotExists| q: p < q < m. One result of
-this is that all parents (from now on we'll exclusively use this term) must
-be causally independent of each other ("form an `anti-chain`_").
+|rightarrow| - the references belong to the later message; one cannot
+predict in advance what messages will come after yours.) *Immediate* means
+that there is nothing between them, i.e. |NotExists| q: p < q < m. One
+result of this is that all parents (from now on we'll exclusively use this
+term) must be causally independent of each other ("form an `anti-chain`_").
 
 Our definition means that pre(m) forms a `transitive reduction`_ of |le|.
 This eliminates redundant information from the contents of a message. This
@@ -69,21 +69,21 @@ achieve some stronger guarantees "for free" - e.g., protection against
 rewinding of vector clocks, a few paragraphs below.
 
 In a real implementation, there are several options for representing nodes
-and edges (i.e. messages and pointers to messages). One simple option, is to
-broadcast the same authenticated-encrypted blob to everyone, treat this blob
-as the content of the message, and use a hash function to reduce the content
-into a pointer (identifier) that later messages can include. This ensures
-that everyone uses the same identifier for a given message, and also that a
-message cannot be changed later, since that would invalidate its identifier.
-(Those familiar with git will see the similarities between this scheme and
-git's representation of immutable commit objects.)
+and edges (i.e. messages and references to messages). One simple option, is
+to broadcast the same authenticated-encrypted blob to everyone, treat this
+blob as the content of the message, and use a hash function to reduce the
+content into a reference (identifier) that later messages can include. This
+ensures that everyone uses the same identifier for a given message, and also
+that a message cannot be changed later, since that would invalidate its
+identifier. (Those familiar with git will see the similarities between this
+scheme and git's representation of immutable commit objects.)
 
 Possible extensions to this are discussed in the appendix. For example, we
 could instead hash(blob||decrypted-verified plaintext), using some
 definition for the plaintext that is the same for everyone. This ensures
-that only people who can read the plaintext can create a valid pointer, but
-it's not clear whether this is such a big deal. TODO: move to appendix and
-discuss further.
+that only people who can read the plaintext can create a valid reference,
+but it's not clear whether this is such a big deal. TODO: move to appendix
+and discuss further.
 
 .. _Partial ordering: https://en.wikipedia.org/wiki/Partially_ordered_set
 .. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
@@ -110,7 +110,7 @@ To preserve causality, the system must deliver received messages (to higher
 application layers) in `topological order`_. In other words, if we receive
 m, but not yet delivered some p |in| pre(m), we must wait for p before
 delivering m. Not doing this breaks the transitivity property of the parent
-pointers, and results in more complexity (TODO: elaborate).
+references, and results in more complexity (TODO: elaborate).
 
 This already lets us detect messages that are received out-of-order, as well
 as *causal drops* - drops of messages that caused (i.e. are *before*) a
@@ -122,7 +122,7 @@ techniques such as asking for a resend (covered in later sections).
 
 If the first message is non-replayable (e.g. if it is fresh), we also
 inductively gain replay protection for the entire session. This is because
-each message contains unforgeable pointers to previous parent messages, so
+each message contains unforgeable references to previous parent messages, so
 everything is "anchored" to the first non-replayable message.
 
 Detecting *non-causal drops* - drops of messages not-before a message we've
@@ -196,9 +196,9 @@ that is before a parent of a strictly earlier message. Formally:
     3 -> 2;
     4 -> 1 [color="#ff0000", headport=se, tailport=nw];
 
-Freshness consistency forbids the 1 |leftarrow| 4 pointer. This may seem like
-quite a complex property to enforce, but actually we do not need to directly
-enforce it.
+Freshness consistency forbids the 1 |leftarrow| 4 reference. This may seem
+like quite a complex property to enforce, but actually we do not need to
+directly enforce it.
 
 **Theorem**: *transitive reduction* entails *freshness consistency*. Proof
 sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since |le| is
@@ -295,7 +295,7 @@ on this would be very serious. Thus for now, we continue with the idea of a
 linear conversion. But, we strongly recommend that implementions offer a way
 for users to determine the real underlying causal order, even as they are
 presented a total order as the main interface. This may be implemented as
-parent pointer annotations, or as hover behaviour that highlights the
+parent reference annotations, or as hover behaviour that highlights the
 displayed parents, or some other UX innovation.
 
 Delivery order
