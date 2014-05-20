@@ -250,8 +250,76 @@ may implement these as heavyweight unit tests.
 Linear ordering and display
 ===========================
 
-Trade-offs
-----------
+It's unclear the "best" way to draw a causal order - there are many layout
+algorithms for general DAGs, that optimise for different aims. One approach,
+that we believe is suited for group messaging applications, is to convert
+the causal order into a total order (a linear sequence). These are simple to
+display, and intuitive as a human interface for our scenario.
 
-Receive-first order
--------------------
+(To be clear, this conversion is only used for the human interface. The core
+system works entirely and directly on the causal order.)
+
+There are several caveats with linear conversions. This is not to discredit
+the general idea - and we don't have a simpler alternative - but we need to
+consider the trade-offs carefully, when selecting a conversion for our
+system. To start with, there are a few properties that would be nice to
+achieve:
+
+- globally consistent / canonical: the conversion outputs the same total order
+  for every user, given the same causal order input
+
+- append-only: it does not need to insert newly-delivered messages (from the
+  causally-ordered input) into the middle of a previous totally-ordered
+  output. In a real application the user only sees the last few messages in
+  the sequence, and earlier ones are "beyond the scroll bar".
+
+- responsive: it accepts all possible causal orders and may work on them
+  immediately, without waiting for any other input
+
+Unfortunately, we cannot achieve all three at once. Suppose we can. The most
+basic case of a non-total causal order is G = (a |rightarrow| o |leftarrow|
+b). WLOG suppose our conversion turns G into (o, a, b) for all users. If one
+user receives (o |leftarrow| b), and does not receive (a) for a long time, a
+responsive conversion must output (o, b). But then when they finally receive
+(a), they will need to insert this into the middle of the previous output.
+
+Furthermore, all linear conversions are open to misinterpretation. WLOG
+suppose that our conversion turns G into (o, a, b) for some user. In an bare
+total order, (o, a) is indistinguishable from (a, b); yet a is not a real
+parent of b in the causal order. An otherwise-honest member may arrange this
+on purpose, to elicit a message (b) from another, whose real context (o) is
+re-bound to the false-but-apparent context (a) by others' conversions.
+
+Granted, this is quite abstract and it's not clear that a real attack based
+on this would be very serious. Thus for now, we continue with the idea of a
+linear conversion. But, we strongly recommend that implementions offer a way
+for users to determine the real underlying causal order, even as they are
+presented a total order as the main interface. This may be implemented as
+parent pointer annotations, or as hover behaviour that highlights the
+displayed parents, or some other UX innovation.
+
+Delivery order
+--------------
+
+We believe that global consistency is the least important out of the three
+properties above, and therefore sacrificing it is the best option. It's
+questionable that it gains us anything - false-but-apparent parents are not
+semantic, so it's not important if they are different across users; and
+ideally we would have a side interface to indicate the real causal order
+*anyway*, to guard against context-rebinding. Existing systems generally do
+not guarantee this either, so it's not as if users demand such a thing.
+
+A linear conversion follows quite naturally from topics already discussed:
+the order in which we deliver messages (for any given user) is a total
+order, being a topological sort of the causal order. It is practically free
+to implement - when the engine delivers a new message, we immediately append
+it to the current display, and record the index for later lookup. This
+conversion is both responsive and append-only, but not globally consistent.
+It is also nearly identical to existing chat behaviours, save for the
+buffering of dangling messages. [#Nres]_ Given its simplicity and relatively
+good properties, we recommend this as the default for implementors.
+
+.. [#Nres] One may argue that due to this buffering, we are sacrificing
+    responsiveness; however there is no *additional* waiting beyond what is
+    necessary in order to achieve causal consistency - as discussed before,
+    sacrificing the latter results in less security and greater complexity.
