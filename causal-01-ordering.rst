@@ -116,8 +116,10 @@ valid, so someone else might be trying to trick *you*.
 Detecting replays, reorders, and causal drops
 ---------------------------------------------
 
-To preserve causality, the system must deliver received messages (to higher
-application layers) in `topological order`_. In other words, if we receive
+To preserve causality, the system must deliver received messages in
+`topological order`_. By "deliver", we mean to incorporate the message into
+the state of the session transcript, for subsequent operations as well as
+consumption by higher layers. "Topological order" means that, if we receive
 m, but not yet delivered some p |in| pre(m), we must wait for p before
 delivering m. Not doing this breaks the transitivity property of the parent
 references, and results in more complexity (TODO: elaborate).
@@ -167,6 +169,10 @@ u |mapsto| max(by(u) |cap| anc(m))
 where max() gives the maximum element of a totally-ordered set, or |bot| if
 it is empty. We say a context c |sqsubset| c' ("strictly less advanced")
 iff |forall| u: c(u) = |bot| |or| c(u) |le| c'(u) and c |ne| c'.
+
+Unlike pre(m) and members(m), by(u) and context(m) depend implicitly on the
+set of messages that have been delivered so far, so might more accurately be
+denoted T.by(u) and T.context(m), where T is the current transcript.
 
 Context is structurally equivalent to a `vector clock`_. As with vector
 clocks, malicious senders may "rewind" the context they are supposed to
