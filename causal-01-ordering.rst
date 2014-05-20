@@ -68,22 +68,25 @@ information. Here, enforcing immediacy and independence actually lets us
 achieve some stronger guarantees "for free" - e.g., protection against
 rewinding of vector clocks, a few paragraphs below.
 
-In a real implementation, there are several options for representing nodes
-and edges (i.e. messages and references to messages). One simple option, is
-to broadcast the same authenticated-encrypted blob to everyone, treat this
-blob as the content of the message, and use a hash function to reduce the
-content into a reference (identifier) that later messages can include. This
-ensures that everyone uses the same identifier for a given message, and also
-that a message cannot be changed later, since that would invalidate its
-identifier. (Those familiar with git will see the similarities between this
-scheme and git's representation of immutable commit objects.)
+References must globally consistent and immutable - i.e. to see a reference
+allows one to verify the message contents, and no-one can forge a different
+message for which the reference is valid, not even the original sender. One
+implementation option, is to broadcast the same authenticated-encrypted blob
+to everyone, treat this blob as the content of the message, and use a hash
+of the message as the reference. (Those familiar with git will see the
+similarities with their model of immutable commit objects.) [#Next]_
 
-Possible extensions to this are discussed in the appendix. For example, we
-could instead hash(blob||decrypted-verified plaintext), using some
-definition for the plaintext that is the same for everyone. This ensures
-that only people who can read the plaintext can create a valid reference,
-but it's not clear whether this is such a big deal. TODO: move to appendix
-and discuss further.
+There are two ways to know a valid reference - deriving it from the message
+contents, or seeing it elsewhere (e.g. in pre(m) of a child). In the latter
+case, one might not have seen the message itself. Then, one could pretend
+that one *has* seen it, by re-using the reference in an outgoing message. We
+assume that people won't do this - there is no strategic benefit to claiming
+that you know something that you are entitled to know but temporarily don't,
+and the rest of the system is designed to ensure that you see it eventually.
+The worse that can happen is that someone will issue a challenge you cannot
+answer, but only your reputation suffers in this case. Also, if you haven't
+seen the message, you are unable to verify that the reference is indeed
+valid, so someone else might be trying to trick *you*.
 
 .. _Partial ordering: https://en.wikipedia.org/wiki/Partially_ordered_set
 .. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
@@ -102,6 +105,13 @@ and discuss further.
     that makes most formal descriptions shorter. Unless otherwise specified,
     we'll use *before* for |le| and *strictly before* for <, and likewise
     for *after* and |ge|.
+
+.. [#Next] Possible extensions to this are discussed in the appendix. For
+    example, we could instead hash(blob||decrypted-verified plaintext),
+    using some definition for the plaintext that is the same for everyone.
+    This ensures that only people who can read the plaintext can create a
+    valid reference, but it's not clear whether this is such a big deal.
+    TODO: move to appendix and discuss further.
 
 Detecting replays, reorders, and causal drops
 ---------------------------------------------
