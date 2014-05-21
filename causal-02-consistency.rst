@@ -6,21 +6,21 @@ Transcript consistency
 .. include:: <mmlalias.txt>
 
 One necessary property of a group session is that everyone sees the same
-transcript - that is, the same set of messages and their relative orders.
-Our causal order already embeds the ordering within each message, so we only
-need to ensure consistency of the set of messages.
+transcript - that is, the same set of messages and their relative orders. Our
+causal order already embeds the ordering within each message, so we only need
+to ensure consistency of the set of messages.
 
 Acknowledgements
 ----------------
 
-We start by considering the smaller problem of message consistency. When we
-see a message, we want to be sure that everyone else also saw it. There are
-many possible reasons why someone might not see a message intended for them,
-and often it is innocent. Rather than trying to enumerate and detect all
-possible failures, we aim for a certainly-good state. We can be sure that r
-saw m, if we see a message by r that refers to m. Conveniently, we already
-have the mechanics for this in our causal order, namely the property that
-every message refers (transitively) to all its ancestors.
+We start by considering the smaller problem of message consistency. When we see
+a message, we want to be sure that everyone else also saw it. There are many
+possible reasons why someone might not see a message intended for them, and
+often it is innocent. Rather than trying to enumerate and detect all possible
+failures, we aim for a certainly-good state. We can be sure that r saw m, if we
+see a message by r that refers to m. Conveniently, we already have the
+mechanics for this in our causal order, namely the property that every message
+refers (transitively) to all its ancestors.
 
 Define a message m to be *acked-by* r iff |exists| m' |in| by(r): m < m'.
 Define a message m to be *fully-acked* iff |forall| r |in| recipients(m): m is
