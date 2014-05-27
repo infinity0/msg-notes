@@ -61,43 +61,70 @@ can get very complex so we'll skip that discussion for now.
 .. [#Nvis] This definition becomes slightly more complex when we introduce
     partial visibility; see that chapter for details.
 
-Implicit vs explicit
---------------------
+Automatic and explicit acks
+---------------------------
 
-Another thing the ack-monitor should handle is (for others' messages) if we
-don't ack the message ourselves. In a busy conversation, the user will likely
+Another thing the ack-monitor should handle is (for messages sent by others) if
+we don't ack the message ourselves. In a busy session, the user will likely
 send a message within the grace period *anyway*, that will be implictly treated
 as an ack. In this case, we don't need to do anything. However, at the end of a
-session, or during a lull in the conversation, we will need to automatically
-send an explicit ack on behalf of a user.
+session, or during a lull in the conversation, we will need to *automatically*
+send an *explicit* ack on behalf of a user. This would be a special message
+that is not displayed as normal in the user's UI, but is still kept in the
+transcript causal order data structure, in order to track full-acks.
 
-There are some nuances about this. For example, these auto-acks should not have
-ack-monitors registered on themselves, which would result in an infinite loop
-of mutual acks (though see the next section for a discussion on heartbeats).
-They also affect resend and dedupe logic.
+There are some nuances about this. The fact the ack is explicit and carries no
+other purpose, means that these need not have ack-monitors registered on them.
+Indeed, in the automatic case, this would result in an infinite loop of acks
+(but see the next section for a discussion on heartbeats).
 
-TODO:
-Dealing with duplicates received: this is because someone thinks we haven't
+An implicit ack, such as a normal user message, indicates "some" level [#Nack]_
+of understanding of previous messages. Automatic explict acks *should not* be
+interpreted to carry this same weight, because the user has no control over
+whether they actually read those messages or not. If one desires an explicit
+"user-level" ack (e.g. in critical situations) there are a few options:
+
+- a manual explicit ack, that must be initiated by the user - like acks in
+  `Pond`_, which are just empty messages.
+
+- a pseudo-manual explicit ack, that may be interpreted like a manual explicit
+  ack. This is triggered automatically, but only when the user is interacting
+  with the application, or has it focused in the foreground.
+
+These would be implemented as a supplement to the automatic ack. Other
+projects' terminology for these concepts include "delivery receipt" for
+"automatic ack" and "read receipt" for "manual/pseudo-manual ack".
+
+Explicit acks also affect resend and dedupe logic. When you receive a duplicate
+message, this is (in a normal situation) because someone thinks we haven't
 acked the message yet.
 
-- If we implicitly acked it with a message M, don't need to take any action,
-  since we already have a ack-monitor on M that will resend it if necessary.
+- If we implicitly acked it with a message m, we don't need to take any action
+  - we already have a ack-monitor on m that will resend it if necessary.
   Doing a resend now is redundant and may improve latency or clog the network.
-- If we explicitly acked it with an auto-ack, then we must resend the same
-  auto-ack, since we don't set ack-monitors on auto-acks.
+  TODO: rw, with below
 
-TODO: what to do when the device is away? semantic difference between auto
-and manual acks.
+- If we explicitly acked it, then we must resend the same ack, since we don't
+  set ack-monitors on explicit acks.
+
+TODO: pro-active resends of others' messages: DoS prevention vs recovery from
+availability partitions
+
+.. _Pond: https://pond.imperialviolet.org/tech.html
+
+.. [#Nack] The user could avoid reading the messages, but we can't do anything
+    about this. In the *average* case, there is some understanding.
 
 Further issues
 --------------
 
-Our scheme so far ensures consistency for delivered messages. What about
-messages not yet delivered - received messages that sit in the "dangling
-messages" buffer for a long time, or messages that we haven't even received?
+Our scheme so far ensures consistency for delivered messages (including
+messages we sent). What about messages not yet delivered - e.g. received
+messages that sit in the "dangling messages" buffer for a long time, or
+messages that we haven't even received?
 TODO
 
-An implementation should probably track unacked recipients, rather than acked
+An implementation should probably book-keep unacked recipients, instead of acked
 ones: when delivered, each message has a set unackby(m) that starts off equal
 to recipients(m), and gradually becomes empty as later messages are delivered.
 When the set becomes empty, its ack-monitor is cancelled and a "fully-acked"
