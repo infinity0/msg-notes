@@ -261,6 +261,17 @@ implement these as heavyweight unit tests.
 
   |forall| u: |forall| m, m' |in| by(u): m |le| m' |or| m' |le| m
 
+TODO: handling breaking of this
+
+- detecting non transitive reduction can be done using only information from
+  m and anc(m), which everyone must have (if they deliver m) and so can detect
+  themselves
+
+- detecting non total ordering can be done only when receiving both
+  messages,which may not happen for everyone. to help this, honest recipients
+  MUST re-broadcast both forks to everyone else, then leave the conversation
+  with "BAIL" error message pointing to both forks.
+
 Linear ordering and display
 ===========================
 
