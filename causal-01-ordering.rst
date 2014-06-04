@@ -120,9 +120,17 @@ To preserve causality, we must deliver received messages in `topological
 order`_. By "deliver", we mean to incorporate the message into the state of the
 session transcript, for subsequent operations as well as consumption by higher
 layers. "Topological order" means that, if we receive m, but not yet delivered
-some p |in| pre(m), we must wait for p before delivering m. Not doing this
-breaks the transitivity property of the parent references, and results in more
-complexity (TODO: elaborate).
+some p |in| pre(m), we must wait to deliver p before delivering m. This applies
+transitively, so in practise we must deliver all of anc(m), before we deliver
+m. This also allows us to verify that the parent references are actually of
+real messages. (The sender should have already been authenticated by some other
+cryptographic means, before we even reach this stage.)
+
+Not doing this, effectively breaks the transitivity property of the parent
+references. By which we mean, the function |le| as implemented in your code may
+pass transitivity tests, but semantically this will not be true, so your
+representation will not reflect reality. This results in more complexity and a
+much less clearer security model. (TODO: elaborate).
 
 This already lets us detect messages that are received out-of-order, as well as
 *causal drops* - drops of messages that caused (i.e. are *before*) a message we
@@ -236,8 +244,7 @@ this, perhaps in the appendix.
 Invariants
 ----------
 
-Let us summarise the invariants on our data structure. Real implementations may
-implement these as heavyweight unit tests.
+Let us summarise the invariants on our data structure.
 
 - |le| is reflexive:
 
@@ -261,16 +268,27 @@ implement these as heavyweight unit tests.
 
   |forall| u: |forall| m, m' |in| by(u): m |le| m' |or| m' |le| m
 
-TODO: handling breaking of this
+The first three ought to be true independently of what data a message declares,
+so may be verified within unit tests rather than as run-time checks. However,
+the last two may be broken if we naively accept any message (which declares its
+sender and direct parents) to be added to the data structure.
 
-- detecting non transitive reduction can be done using only information from
-  m and anc(m), which everyone must have (if they deliver m) and so can detect
-  themselves
+Detecting non transitive reduction can be done using only information from m
+and anc(m). Since messages are only added to the data structure in topological
+order, everyone has this information, so they can detect this condition
+themselves. The merge algorithm includes this functionality, and it may be run
+on every received message including non-merges - see that chapter for details.
 
-- detecting non total ordering can be done only when receiving both
-  messages,which may not happen for everyone. to help this, honest recipients
-  MUST re-broadcast both forks to everyone else, then leave the conversation
-  with "BAIL" error message pointing to both forks.
+Detecting non total ordering can be done only when delivering messages from
+both forks, which may not happen for everyone. To help this propagate, users
+that see this condition, must re-broadcast all messages within both forks to
+everyone else, then leave the conversation with a BAIL error message (TODO:
+elaborate possible errors) that references both forks. Note that one of the
+references may have to be indirect if they already replied to the other fork,
+to preserve transitive reduction. This should never need to be 3 forks; bail
+should be immediate upon delivering 2 forks. It is not essential that everyone
+receives this, since lack of participation will indicate that something is
+wrong, but this helps to narrow down the cause.
 
 Linear ordering and display
 ===========================
