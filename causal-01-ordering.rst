@@ -40,7 +40,7 @@ order, ¬ (a |le| b) does *not* imply a |ge| b.
 
 In the diagram above, where an edge a |leftarrow| b means that a |le| b,
 
-- red nodes (and m [#Neng]_) are *before* m; all others are *not-before* m.
+- red nodes (and m [#Nnat]_) are *before* m; all others are *not-before* m.
 - green nodes (and m) are *after* m; all others are *not-after* m.
 - grey nodes are neither before nor after m, but *causally independent* of it.
 
@@ -100,7 +100,7 @@ someone else might be trying to trick *you*.
     event that is after send[m] but not-after deliver[m]; nor an event that is
     before deliver[m] but not-before send[m].
 
-.. [#Neng] In natural language, |le| is really *before or equal to*. We say
+.. [#Nnat] In natural language, |le| is really *before or equal to*. We say
     *before* here because that's shorter. We use |le| instead of < because that
     makes most formal descriptions shorter. Unless otherwise specified, we'll
     use *before* for |le| and *strictly before* for <, and likewise for *after*
@@ -116,38 +116,58 @@ someone else might be trying to trick *you*.
 Detecting replays, reorders, and causal drops
 ---------------------------------------------
 
-To preserve causality, we must deliver received messages in `topological
-order`_. By "deliver", we mean to incorporate the message into the state of the
-session transcript, for subsequent operations as well as consumption by higher
-layers. "Topological order" means that, if we receive m, but not yet delivered
-some p |in| pre(m), we must wait to deliver p before delivering m. This applies
-transitively, so in practise we must deliver all of anc(m), before we deliver
-m. This also allows us to verify that the parent references are actually of
-real messages. (The sender should have already been authenticated by some other
-cryptographic means, before we even reach this stage.)
+Encoding the partial order already enables us to detect messages that are
+received out-of-order. Actually, we completely ignore the receive-order, and
+instead try to build up our data structure based on the parent references. When
+we add a message to the structure, we emit a "delivery" event, which makes the
+message available for subsequent operations, as well as consumption by higher
+layers like the UI. (We'll use "deliver" as a synonym for "add" from now on.)
 
-Not doing this, effectively breaks the transitivity property of the parent
-references. By which we mean, the function |le| as implemented in your code may
-pass transitivity tests, but semantically this will not be true, so your
-representation will not reflect reality. This results in more complexity and a
-much less clearer security model. (TODO: elaborate).
+For any message m, if any of its parents p |in| pre(m) have not yet been added,
+we must place m in a separate queue, and wait for all of pre(m) to be added.
+This enforces a `topological order`_ and acyclicity, and ensures that if m was
+sent after p, then everyone else will see m after p. This also allows us to
+verify that the parent references are actually of real messages. (The sender
+should have already been authenticated by some other cryptographic means,
+before we even reach this stage.) Since |le| is transitive, in practise we
+deliver all of anc(m) before we deliver m.
 
-This already lets us detect messages that are received out-of-order, as well as
-*causal drops* - drops of messages that caused (i.e. are *before*) a message we
-*have* received. For the former case, recovery is straightforward and we don't
-need to bother the user. For the latter, we can have a grace period waiting for
-parent messages to arrive, after which we can emit a UI warning ("timed out
-waiting for intermediate messages"), or perform recovery techniques such as
-asking for a resend (covered in later sections).
+Withholding some messages even though they are available to display, may seem
+like bad user experience. However, displaying them immediately, sacrifices
+ordering and the other security properties we can achieve on top of this.
+[#Nhld]_ Our threat model is that these properties may be critical for user
+security; applications that don't require this (e.g. streaming video) may use
+a different scheme. Also, in the next chapter we talk about resend mechanisms,
+which should cut down the cases in practise where we must withhold messages.
+
+The structure also lets us detect causal drops - drops of messages that caused
+(i.e. are *before*) a message we *have* received. We can have a grace period
+waiting for parent messages to arrive, after which we can emit a UI warning
+("timed out waiting for intermediate messages"), or perform recovery techniques
+such as asking for a resend (next chapter). Detecting *non-causal drops* -
+drops of messages not-before a message we've already received (and therefore we
+don't see any references to) is more complex, and techniques for this will be
+covered in the chapter on freshness.
 
 If the first message has replay protection (e.g. if it is fresh), we also
 inductively gain this for the entire session. This is because each message
 contains unforgeable references to previous parent messages, so everything is
 "anchored" to the first non-replayable message.
 
-Detecting *non-causal drops* - drops of messages not-before a message we've
-already received (and therefore we don't see any references to), is more
-complex, and techniques for this will be covered in a later section.
+.. [#Nhld] One major problem is we effectively break transitivity of the parent
+    references. By which we mean, even if you somehow implement |le| despite
+    having incomplete anc(m) and it passes transitivity tests, semantically
+    this will not be true, so your representation will not reflect reality.
+    Although these properties may seem abstract and not important to security,
+    other more concrete properties that we elaborate in further chapters,
+    depend on them.
+
+    One interface improvement could be to show the user a notice saying
+    "messages received out-of-order but not displayed due to lack of context".
+    If you feel you really must display their contents, you must do this
+    separately from the main conversation interface, activated manually, and
+    with a strong warning on the consequences of reading them - they may be
+    fake messages, do not reply to them, etc etc.
 
 Causal orders
 =============
@@ -185,7 +205,7 @@ Context is structurally equivalent to a `vector clock`_. As with vector clocks,
 malicious senders may "rewind" the context they are supposed to declare with
 each message. If this redundant information is trusted, this enables certain
 re-ordering attacks. TODO: give an example of this. To protect against this, we
-define *freshness consistency*: all messages must have a context that is
+introduce *freshness consistency*: all messages must have a context that is
 strictly more advanced than the context of strictly earlier messages. Or, in
 other words, a message may not declare a parent that is before a parent of a
 strictly earlier message. Formally:
