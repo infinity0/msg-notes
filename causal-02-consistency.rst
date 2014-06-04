@@ -22,10 +22,10 @@ see a message by r that refers to m. Conveniently, we already have the
 mechanics for this in our causal order, namely the property that every message
 refers (transitively) to all its ancestors.
 
-Define a message m to be *acked-by* r iff |exists| m' |in| by(r): m < m'.
-Define a message m to be *fully-acked* iff |forall| r |in| recipients(m): m is
-acked-by r. [#Nvis]_ Both of these depend implicitly on the current transcript.
-Note that in our terms, an "ack" is simply any message that refers to a
+Define a message m to be **acked-by** r iff |exists| m' |in| by(r): m < m'.
+Define a message m to be **fully-acked** iff |forall| r |in| recipients(m): m
+is acked-by r. [#Nvis]_ Both of these depend implicitly on the current
+transcript. In our terms, an "ack" is simply any message that refers to a
 previous one (the one being acked), not necessarily a special ACK message.
 
 Once a message is acked by everyone else, we are certain that they have seen
@@ -33,8 +33,9 @@ it, and we reach message consistency. If we did not send the message, we must
 also make sure that we ack it ourselves  - this is necessary for *others* to
 reach message consistency. After this, the message is *fully-acked*, and we no
 longer need to worry about it. In a valid graph, a message becomes fully-acked
-at the same point for everyone - one can think of the acks as forming a
-"reverse" |bot|-less context(m). (TODO: prove equality.)
+at the same point for everyone; one can think of the direct acks as a "future"
+context(m) which (if full-ack is reached) contains no |bot| values. (TODO:
+prove equality.)
 
 This is an incremental consistency; full-acks occur as new messages arrive,
 instead of all at once at the end of the session. A further advantage is that
@@ -167,9 +168,7 @@ Further issues
 --------------
 
 Our scheme so far ensures consistency for delivered messages (including
-messages we sent). What about messages not yet delivered - e.g. received
-messages that sit in the "dangling messages" buffer for a long time, or
-messages that we haven't even received?
+messages we sent). What about messages we haven't even received?
 TODO
 
 Display
