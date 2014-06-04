@@ -48,7 +48,7 @@ that it does eventually become fully-acked, and warn or try to recover if this
 process takes too long. The mechanism must be pro-active, so it must be outside
 of the packet send/recv logic. We'll call this an "ack-monitor", and typically
 it would be activated after a grace period after delivery, and de-activated or
-cancelled on full-ack.
+cancelled on full-ack. [#Nimp]_
 
 At the very least, the user should be alerted if message consistency is not
 reached. On top of this, we can resend the message. This should be the exact
@@ -60,6 +60,16 @@ can get very complex so we'll skip that discussion for now.
 
 .. [#Nvis] This definition becomes slightly more complex when we introduce
     partial visibility; see that chapter for details.
+
+.. [#Nimp] An implementation should book-keep unacked recipients instead of
+    acked ones: when delivered, each message has a set unackby(m) that starts
+    off equal to recipients(m), and gradually becomes empty as later messages
+    (that ack it) are delivered. When the set becomes empty, its ack-monitor is
+    cancelled and a "fully-acked" event is emitted. It is also useful to track
+    a set unacked() of messages not-yet fully-acked in the current transcript.
+    When a message m is delivered, it is added to this set, then removed again
+    when unackby(m) becomes empty. TODO: maybe move this to an "implementation"
+    appendix.
 
 Automatic and explicit acks
 ---------------------------
@@ -75,8 +85,8 @@ transcript causal order data structure, in order to track full-acks.
 
 There are some nuances about this. The fact the ack is explicit and carries no
 other purpose, means that these need not have ack-monitors registered on them.
-Indeed, in the automatic case, this would result in an infinite loop of acks
-(but see the next section for a discussion on heartbeats).
+Indeed, in the automatic case, this would result in an indefinite sequence of
+mutual acks - but see the next section for more discussion on this.
 
 An implicit ack, such as a normal user message, indicates "some" level [#Nack]_
 of understanding of previous messages. Automatic explict acks *should not* be
@@ -95,25 +105,63 @@ These would be implemented as a supplement to the automatic ack. Other
 projects' terminology for these concepts include "delivery receipt" for
 "automatic ack" and "read receipt" for "manual/pseudo-manual ack".
 
-Explicit acks also affect resend and dedupe logic. When you receive a duplicate
-message, this is (in a normal situation) because someone thinks we haven't
-acked the message yet.
+Resends and deduplication
+-------------------------
 
-- If we implicitly acked it with a message m, we don't need to take any action
-  - we already have a ack-monitor on m that will resend it if necessary.
-  Doing a resend now is redundant and may improve latency or clog the network.
-  TODO: rw, with below
+When you receive a duplicate message m, this is (in a normal situation) because
+someone thinks we haven't acked the message yet - and perhaps we haven't. So we
+need to ack it, until we are confident they have received the ack:
 
-- If we explicitly acked it, then we must resend the same ack, since we don't
-  set ack-monitors on explicit acks.
+- If m is still in the delivery queue, ignore the duplicate. We don't even
+  know if it's a valid message yet - we haven't received all its ancestors.
+  If and when we do, we would already set an ack-monitor on it, which will
+  handle any future duplicates.
 
-TODO: pro-active resends of others' messages: DoS prevention vs recovery from
-availability partitions
+- If we haven't yet acked m, the ack-monitor we already set on m will handle
+  this situation - i.e. either wait for the user to send an implicit ack, or
+  send an explicit ack later.
+
+- If we have already acked m, say with message am, then:
+
+  - If the ack was implicit, then we already set an ack-monitor on am, which
+    should handle this situation, resending am if necessary. (Perhaps am was
+    already fully-acked, in which case m was sent in error, or due to a heavily
+    delayed network, or a replay attack. In any case, the ack-monitor will have
+    already been cancelled and we ignore m, which is the correct behaviour.)
+
+  - If the ack was explicit, then we don't have an ack-monitor on am, so we
+    should resend am. (This is the only case we take action on.)
+
+Note that we say "confidence", not "guarantee". This is because with explicit
+acks, we do not check for full-ack (of the ack) - so perhaps it will be dropped
+and the recipient will never see it. (If the network is not dropping messages
+though, we will see their resend m, and be able to act on it as above.)
+
+We believe that this is not a security problem - it is the responsibility of
+each user to check that all messages they receive are fully-acked. If our ack
+is dropped, then even though we don't know they have received our ack, we know
+that they will not treat the un-acked (from their POV) message as part of the
+consistent transcript - it is not in their interest to do so. So we don't need
+to worry about trying to *guarantee* that our own explicit acks are
+fully-acked. This avoids the Byzantine agreement problem.
+
+We *could* provide a guarantee even in the case of explicit acks, though. In
+the next chapter, we'll talk about heartbeats, which as hinted before, are
+automatic explicit acks, that result in an infinite sequence of mutual acks.
+But, this is unsuitable for some high-latency or asynchronous protocols, so we
+allow for the option to omit heartbeats, and talk about these separately.
+
+The resend/dedupe scheme outlined above is quite minimal in the messages it
+chooses to resend. Of course it is possible to do more pro-active resending;
+however this may open up the path to DoS attacks. More research can be done
+here; for now we have a good basic scheme with a clear logical justification,
+so we'll continue with other topics.
 
 .. _Pond: https://pond.imperialviolet.org/tech.html
 
 .. [#Nack] The user could avoid reading the messages, but we can't do anything
-    about this. In the *average* case, there is some understanding.
+    about this, and it's dubious that this could be abused for benefit. In the
+    *average* case, there is some understanding.
 
 Further issues
 --------------
@@ -123,15 +171,6 @@ messages we sent). What about messages not yet delivered - e.g. received
 messages that sit in the "dangling messages" buffer for a long time, or
 messages that we haven't even received?
 TODO
-
-An implementation should probably book-keep unacked recipients, instead of acked
-ones: when delivered, each message has a set unackby(m) that starts off equal
-to recipients(m), and gradually becomes empty as later messages are delivered.
-When the set becomes empty, its ack-monitor is cancelled and a "fully-acked"
-event is emitted. It is also useful to track a set unacked() of messages
-not-yet fully-acked in the current transcript. When a message m is delivered,
-it is added to this set, then removed again when unackby(m) becomes empty.
-TODO: maybe move this to an "implementation" appendix.
 
 Display
 -------
