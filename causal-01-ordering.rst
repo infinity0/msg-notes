@@ -121,16 +121,17 @@ received out-of-order. Actually, we completely ignore the receive-order, and
 instead try to build up our data structure based on the parent references. When
 we add a message to the structure, we emit a "delivery" event, which makes the
 message available for subsequent operations, as well as consumption by higher
-layers like the UI. (We'll use "deliver" as a synonym for "add" from now on.)
+layers like the UI. (Sometimes we use the term "accept" when "deliver" might be
+confused to mean "remote completion of a send", e.g. in "delivery receipt".)
 
-For any message m, if any of its parents p |in| pre(m) have not yet been added,
-we must place m in a separate queue, and wait for all of pre(m) to be added.
-This enforces a `topological order`_ and acyclicity, and ensures that if m was
-sent after p, then everyone else will see m after p. This also allows us to
-verify that the parent references are actually of real messages. (The sender
-should have already been authenticated by some other cryptographic means,
-before we even reach this stage.) Since |le| is transitive, in practise we
-deliver all of anc(m) before we deliver m.
+For each message m, if any of its parents p |in| pre(m) have not yet been
+delivered, we must place m in a queue, and wait for all of pre(m) to be
+delivered first. This enforces a `topological order`_ and acyclicity, and
+ensures that if m was sent after p, then everyone else will see m after p. It
+also allows us to verify that the parent references are actually of real
+messages. (The sender should have already been authenticated by some other
+cryptographic means, before we even reach this stage.) Since |le| is
+transitive, in practise we deliver all of anc(m) before we deliver m.
 
 Withholding some messages even though they are available to display, may seem
 like bad user experience. However, displaying them immediately, sacrifices

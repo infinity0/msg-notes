@@ -57,7 +57,8 @@ same ciphertext as was sent before - this makes it easy for the recipients to
 resolve any duplicates, and also allows us to resend a message originally by
 someone else, if deemed beneficial. This general approach can greatly improve
 performance under bad network conditions. However, optimising the exact policy
-can get very complex so we'll skip that discussion for now.
+can get very complex so we'll skip that discussion for now. In practise, we
+have been using an exponential-backoff algorithm, which seems to work OK.
 
 .. [#Nvis] This definition becomes slightly more complex when we introduce
     partial visibility; see that chapter for details.
@@ -87,7 +88,10 @@ transcript causal order data structure, in order to track full-acks.
 There are some nuances about this. The fact the ack is explicit and carries no
 other purpose, means that these need not have ack-monitors registered on them.
 Indeed, in the automatic case, this would result in an indefinite sequence of
-mutual acks - but see the next section for more discussion on this.
+mutual acks - but see the next section for more discussion on this. However,
+ack-monitors for an implicit ack am sent directly after a sequence of explict
+acks, should also resend these whenever it resends am - because everyone must
+receive anc(am) to be able to deliver am.
 
 An implicit ack, such as a normal user message, indicates "some" level [#Nack]_
 of understanding of previous messages. Automatic explict acks *should not* be
@@ -105,6 +109,9 @@ whether they actually read those messages or not. If one desires an explicit
 These would be implemented as a supplement to the automatic ack. Other
 projects' terminology for these concepts include "delivery receipt" for
 "automatic ack" and "read receipt" for "manual/pseudo-manual ack".
+
+TODO: exact steps in ending a conversation, sending explicit acks and waiting,
+showing messages not fully-acked.
 
 Resends and deduplication
 -------------------------
@@ -139,8 +146,8 @@ and the recipient will never see it. (If the network is not dropping messages
 though, we will see their resend m, and be able to act on it as above.)
 
 We believe that this is not a security problem - it is the responsibility of
-each user to check that all messages they receive are fully-acked. If our ack
-is dropped, then even though we don't know they have received our ack, we know
+each user to check that all messages they see are fully-acked. If our ack is
+dropped, then even though we don't know they have received our ack, we know
 that they will not treat the un-acked (from their POV) message as part of the
 consistent transcript - it is not in their interest to do so. So we don't need
 to worry about trying to *guarantee* that our own explicit acks are
