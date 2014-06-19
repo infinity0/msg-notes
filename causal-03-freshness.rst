@@ -52,25 +52,49 @@ worth spending effort on, so we'll note the issue but won't pursue it here.
 Presence and expiry
 ===================
 
-Drop vs part - dropped users still have right to see messages, until
-manually kicked. TODO: continue to ack-monitor or not? What happens if user
-becomes present again?
+Freshness is an indicator of presence, which we'll define roughly as "a good
+chance a user will ack messages sent to them". We adopt end-to-end definitions,
+so "presence" is considered from the local user's perspective, rather than the
+internet - if a user's connection goes down, from their POV everyone else is
+absent, rather than themselves. Typically, presence statuses must expire unless
+explicitly refreshed, to be able to reliably indicate absence.
 
-May also integrate with external e2es presence mechanism.
+Our heartbeats are a rudimentary indicator of presence, one that is only partly
+useful since it works within an already-established session. There are many
+end-to-end secure presence mechanisms that are more general purpose, e.g. TODO.
+Yet other mechanisms are simple but still effective - e.g. detecting that the
+local network interfaces are disconnected, is a strong indicator of absence.
 
-When user absent, could throttle resends. Note however: if no external presence
-mechanism, this should not go down to 0 - otherwise both parts of a partition
-will stop sending, and we'll never regain presence!
+Locally, we may integrate our heartbeats with these other mechanisms, for more
+accuracy and reliability. The exact logic will depend on the mechanism and what
+interfaces it provides for integration, but it should be fairly intuitive and
+straightforward. For example, the combined system should indicate presence when
+a user acks a heartbeat *or* any external mechanism indicates presence, and any
+of these should reset any expiry-based absence indicators.
 
-When a dropper returns, messages ought to be resent to them more actively.
-For example, if an ack-monitor is doing an increasing-interval strategy, we
-could reset the interval to the minimum.
+Absence is semantically distinct from parting the session - absent users still
+have the *right* to see messages, until they formally stop being a member of
+the session. This distinction supports the ability to have a long-running
+session where users go online and offline, but still want to see what was said
+during their absence. This is common for some existing hosted chat systems, but
+we can do this end-to-end too. (If an application wishes, it may automatically
+force-part a user if they become absent, for a more "private" feel.)
+
+If a session is active whilst a user is absent, this will cause non-full-ack
+warnings to be emitted. But this is expected because they are absent, so we can
+account for it: if the users who haven't acked a message are all absent, the
+severity of its non-full-ack warning should be reduced. Furthermore, the rate
+of resends should be reduced too, since we believe they won't succeed anyway.
+(However, if we have no other external presence mechanism, they should not be
+completely stopped - otherwise all parts of a partition will stop sending, and
+we'll never regain presence.) Later, when the absent user returns, the rate of
+resends should be restored, or even reset to the maximum.
 
 Timestamps
 ==========
 
-So far we have avoided communicating any timestamps within the protocol, nor
-to rely on specific timestamp values for others' messages. (Heartbeat timestamps
+So far we have avoided communicating any timestamps in the protocol, nor to
+rely on specific timestamp values for others' messages. (Heartbeat timestamps
 are only used locally as a lower-bound.)
 
 However, specific values for timestamps are useful as a UI indication. How do
