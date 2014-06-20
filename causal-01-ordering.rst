@@ -206,7 +206,7 @@ Context is structurally equivalent to a `vector clock`_. As with vector clocks,
 malicious senders may "rewind" the context they are supposed to declare with
 each message. If this redundant information is trusted, this enables certain
 re-ordering attacks. TODO: give an example of this. To protect against this, we
-introduce *freshness consistency*: all messages must have a context that is
+introduce *context consistency*: all messages must have a context that is
 strictly more advanced than the context of strictly earlier messages. Or, in
 other words, a message may not declare a parent that is before a parent of a
 strictly earlier message. Formally:
@@ -240,11 +240,11 @@ strictly earlier message. Formally:
     3 -> 2;
     4 -> 1 [color="#ff0000", headport=se, tailport=nw];
 
-Freshness consistency forbids the 1 |leftarrow| 4 reference. This may seem like
+Context consistency forbids the 1 |leftarrow| 4 reference. This may seem like
 quite a complex property to enforce, but actually we do not need to directly
 enforce it.
 
-**Theorem**: *transitive reduction* entails *freshness consistency*. Proof
+**Theorem**: *transitive reduction* entails *context consistency*. Proof
 sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since |le| is
 transitive, |forall| p' |in| pre(m'): p' < p |equiv| anc(p') |subset| anc(p).
 By transitive reduction, no other q |ne| p |in| pre(m) may belong to anc(p), so
@@ -253,7 +253,7 @@ q |notin| anc(p') |equiv| ¬ q |le| p' (for all p', q) as required. []
 So, we recommend that a real implementation should not encode context(m)
 explicitly, since it is redundant information that can lead to attacks.
 Instead, one should enforce that pre(m) is an anti-chain [#Nred]_, which
-automatically achieves freshness consistency. Then, one may locally calculate
+automatically achieves context consistency. Then, one may locally calculate
 context(m) from pre(m), using the following recursive algorithm: TODO: write
 this, perhaps in the appendix.
 
@@ -283,7 +283,7 @@ Let us summarise the invariants on our data structure.
 
   |forall| m: |forall| p, p' |in| pre(m): p |perp| p'
 
-  as above, this entails freshness consistency
+  as above, this entails context consistency
 
 - by(u) is a chain / total-order:
 
