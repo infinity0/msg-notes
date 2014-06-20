@@ -48,7 +48,7 @@ Since |le| is transitive, a |le| b means that the sender of b knows all
 messages before a as well. (We'll talk about how to enforce this in a real
 system soon.) As a shortcut, define **anc(m)** = {a | a |le| m}, i.e. the set
 of ancestors of m, including m. This set can be interpreted as the possible
-"causes" of m.
+"causes" of m, like the discrete equivalent of a `light cone`_.
 
 In our scheme, each message m declares its immediate predecessors P =
 **pre(m)**. This defines a few relationships: |forall| p |in| P: p < m. (This
@@ -93,6 +93,7 @@ someone else might be trying to trick *you*.
 .. _Directed acyclic graph: https://en.wikipedia.org/wiki/Directed_acyclic_graph
 .. _Topological order: https://en.wikipedia.org/wiki/Topological_sort
 .. _Anti-chain: https://en.wikipedia.org/wiki/Antichain
+.. _Light cone: https://en.wikipedia.org/wiki/Light_cone
 
 .. [#Nsep] Some other systems treat send vs deliver (of each message m) as two
     separate events, but we don't do this for simplicity. The sender delivers m
@@ -358,8 +359,8 @@ this would be very serious. Thus for now, we continue with the idea of a linear
 conversion. But, we strongly recommend that implementions offer a way for users
 to determine the real underlying causal order, even as they are presented a
 total order as the main interface. This may be implemented as parent reference
-annotations, or as hover behaviour that highlights the displayed parents, or
-some other UX innovation.
+annotations, or as hover behaviour that highlights the real parents, or some
+other UX innovation.
 
 Delivery order
 --------------

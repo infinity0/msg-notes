@@ -103,7 +103,8 @@ we do this?
 Limitations
 -----------
 
-Clock reliability.
+TODO Clock reliability.
+
 - new device, time not set
 - when travelling, some users change system clock instead of time zone
 - change system clock for testing and forget about it
@@ -115,7 +116,9 @@ messaging protocol can detect. We treat timestamps as a similar sort data - no
 other part of the system or the security models depends on them being even
 vaguely correct.
 
-Simplest option then is to trust user's local time, as a UNIX timestamp.
+Simplest option is to use local delivery time of a message. Additionally, each
+message may contain the claimed sender local time, which may be displayed on
+the side.
 
 See appendix (TODO: link) for discussion of some more complex techniques, which
 may result in better accuracy when users have skewed clocks. However, they are
