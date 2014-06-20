@@ -368,9 +368,8 @@ We believe that global consistency is the least important out of the three
 properties above, and therefore sacrificing it is the best option. It's
 questionable that it gains us anything - false-but-apparent parents are not
 semantic, so it's not important if they are different across users; and ideally
-we would have a side interface to indicate the real causal order *anyway*, to
-guard against context-rebinding. Existing systems generally do not guarantee
-this either, so it's not as if users demand such a thing.
+we would have a secondary interface to indicate the real causal order *anyway*,
+to guard against context-rebinding.
 
 A linear conversion follows quite naturally from topics already discussed: the
 order in which we deliver messages (for any given user) is a total order, being
@@ -381,6 +380,23 @@ responsive and append-only, but not globally consistent. It is also nearly
 identical to existing chat behaviours, save for the buffering of dangling
 messages. [#Nres]_ Given its simplicity and relatively good properties, we
 recommend this as the default for implementors.
+
+Another approach achieves global consistency, but adds some latency: we can
+bounce all messages via a central server, which then dictates the ordering for
+everyone. This strategy is popular with many existing non-secure messaging
+systems. If we embed the causal order, we can re-gain end-to-end security, and
+protect against the server from violating causality or context. However, we
+still need another mechanism to ensure that it is providing the same total
+ordering to everyone (the whole point of doing this in the first place). TODO:
+outline a mechanism for this. Or, we could omit this mechanism, fall back to
+"delivery order" as above, then "global consistency" would be achieved on a
+best-effort basis, assuming the server is trustworthy.
+
+A completely symmetric approach for global consistency with end-to-end security
+is to use consensus algorithms such as Paxos. These induce a total order on the
+messages in the session, but have other performance trade-offs, requiring input
+from other members, before a message can be delivered even to oneself. These
+are considered out-of-scope of this chapter.
 
 .. [#Nres] One may argue that due to this buffering, we are sacrificing
     responsiveness; however there is no *additional* waiting beyond what is
