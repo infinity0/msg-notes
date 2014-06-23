@@ -134,13 +134,14 @@ messages. (The sender should have already been authenticated by some other
 cryptographic means, before we even reach this stage.) Since |le| is
 transitive, in practise we deliver all of anc(m) before we deliver m.
 
-Withholding some messages even though they are available to display, may seem
-like bad user experience. However, displaying them immediately, sacrifices
-ordering and the other security properties we can achieve on top of this.
-[#Nhld]_ Our threat model is that these properties may be critical for user
-security; applications that don't require this (e.g. streaming video) may use
-a different scheme. Also, in the next chapter we talk about resend mechanisms,
-which should cut down the cases in practise where we must withhold messages.
+Withholding some messages even though they are available to deliver without
+their ancestors, may seem like bad user experience. However, delivering them
+like this sacrifices ordering and changes the original context of the message.
+[#Nhld]_ As mentioned previously, our threat model is that this may be critical
+for security; another interpretation is that messages without their ancestors
+*are not* what the sender intended, so it doesn't even make any semantic sense
+to deliver them. In the next chapter we talk about resend mechanisms, which
+should cut down the cases in practise where we must withhold messages.
 
 The structure also lets us detect causal drops - drops of messages that caused
 (i.e. are *before*) a message we *have* received. We can have a grace period
@@ -370,7 +371,7 @@ properties above, and therefore sacrificing it is the best option. It's
 questionable that it gains us anything - false-but-apparent parents are not
 semantic, so it's not important if they are different across users; and ideally
 we would have a secondary interface to indicate the real causal order *anyway*,
-to guard against context-rebinding.
+to guard against context rebinding.
 
 A linear conversion follows quite naturally from topics already discussed: the
 order in which we deliver messages (for any given user) is a total order, being
@@ -392,12 +393,6 @@ ordering to everyone (the whole point of doing this in the first place). TODO:
 outline a mechanism for this. Or, we could omit this mechanism, fall back to
 "delivery order" as above, then "global consistency" would be achieved on a
 best-effort basis, assuming the server is trustworthy.
-
-A completely symmetric approach for global consistency with end-to-end security
-is to use consensus algorithms such as Paxos. These induce a total order on the
-messages in the session, but have other performance trade-offs, requiring input
-from other members, before a message can be delivered even to oneself. These
-are considered out-of-scope of this chapter.
 
 .. [#Nres] One may argue that due to this buffering, we are sacrificing
     responsiveness; however there is no *additional* waiting beyond what is

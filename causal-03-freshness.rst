@@ -77,8 +77,15 @@ have the *right* to see messages, until they formally stop being a member of
 the session. This distinction supports the ability to have a long-running
 session where users go online and offline, but still want to see what was said
 during their absence. This is common for some existing hosted chat systems, but
-we can do this end-to-end too. (If an application wishes, it may automatically
-force-part a user if they become absent, for a more "private" feel.)
+we can do this end-to-end too.
+
+The feature of long-term absences must be considered against the requirements
+of the greeting protocol. For example, some GKEs require all members to be
+present in order to complete execution. Then, supporting long-term absences is
+problematic, because this support will likely result in most of the session's
+lifetime having partial membership presence. To avoid this, we recommended that
+systems choose a greeting protocol that supports the forced-parting of absent
+members *without their input*.
 
 If a session is active whilst a user is absent, this will cause non-full-ack
 warnings to be emitted. But this is expected because they are absent, so we can

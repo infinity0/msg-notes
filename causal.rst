@@ -2,43 +2,48 @@
 Causal ordering
 ===============
 
-Typical models of secure communication sessions only deal with two parties. In
-this scenario, the session exists between single startup and shutdown phases.
-From the point of view of each agent, there is only one *other* partner to the
-session, and all other parties are untrusted outsiders.
+In general, messages are not self-contained but implicitly refer to previous
+messages (their "context" or "causes"), and this is critical to their meaning.
+A "context rebinding" attack presents a message with a different context, which
+means recipients will interpret it differently from what the author intended.
+We must guarantee not only a message's contents, but its context as well.
 
-When we extend communication to multiple parties, we bring up qualitatively new
-issues. There are more mechanics to the session - members may join and part
-within the lifetime of the session, outside of the initial startup or final
-shutdown. There are multiple *other* partners, each of which may try to act
-against each other. This demands additional security requirements, such as
-ensuring that everyone sees the same consistent view of the session, and that
-members can only read a partial view of the entire session, namely between the
-time(s) they join and part. [#N1]_
+We work under the premise that members should be able to send messages without
+requiring approval from other parties. The basic distributed case is where two
+members each publish a message with the same context o, call them a, b, without
+having seen the other message first. Interpreting these messages within a total
+(linear) order, say [a, b], would change the context of b, adding a into it. So
+a total order cannot preserve context, under the no-approval premise.
 
-Here, we present a scheme for dealing with these issues - namely a causal
-ordering of messages, encoded by unforgeable immutable pointers. [#N2]_ On top
-of the above, it also offers protection against network-level attacks (reorder,
-replay, drop of packets) as well as simplifying the problem of freshness.
-(These benefit two-party sessions too, but for whatever reason aren't treated
-in much detail in existing protocols.) We also discuss potential human
-interfaces of our data structure, including how to display error conditions and
-the options for users to respond to these.
+If we abandon the no-approval premise, and use a consensus algorithm to approve
+messages, then we achieve a total order. However, this requires interaction
+with other members of the session. We believe the cost of this is fatal to a
+normal user experience, and destroys any ability of the system to work in an
+asynchronous scenario. It increases the complexity of implementation, and the
+guarantees it provides are still much lower than the computationally-secure
+guarantees on context in our system. We will not discuss these further, but
+other projects are welcome to take this approach.
 
-We believe this scheme allows extensions towards more complex mechanics. For
-example, to support membership operations, we develop (we argue) a unique
-algorithm for merging concurrent changes, that satisfies intuitive notions of
-quasi-global consistency. We derive conditions on how to encode a global state
-to be compatible with this algorithm, which may be useful for policy-enforced
-membership operations. Later, we also discuss how the DAG structure may be used
-as a guide to develop key-rotation ratchets based on more complex key-agreement
-protocols, instead of 2-party DH that current ratchets are based on.
+From these initial considerations, we choose a causal order for representing
+the relationships between messages, with a secondary total order with weaker
+guarantees used only for user interface purposes. We explore how to execute
+session mechanics and achieve security properties using this structure. As will
+be discussed, some of these strategies may be viewed as performance penalties,
+such as temporarily preventing certain messages from being shown; applications
+that can accept weaker ordering guarantees, such as streaming non-sensitive
+video, may prefer to avoid this and choose a different scheme.
 
-.. [#N1] Some group communication applications do not require this, but we
-    think it is consistent with intuition for a "*private*" chat.
+Some key-rotation ratchets implicitly preserve context, since the dependencies
+of which previous keys are used to protect each message matches the actual
+causal order of messages. Our explicit formal treatment here works outside of
+any ratchet, but we'll return to the relationships between ratchet message
+dependency and causal orders in another chapter.
 
-.. [#N2] These are implemented using cryptographic hashes, but the mentioned
-    properties are the important interfaces to the overall scheme.
+We also explore more complex mechanics. For concurrent membership operations,
+we derive a merge algorithm over causal orders that satisfies intuitive notions
+of quasi-global consistency. Our analysis includes conditions on how to encode
+a global state to be compatible with this algorithm, which may be useful for
+policy-enforced membership operations.
 
 Subtopics:
 
