@@ -68,12 +68,12 @@ enforcing immediacy and independence actually lets us achieve some stronger
 guarantees "for free" - e.g., protection against rewinding of vector clocks, a
 few paragraphs below.
 
-References must globally consistent and immutable - i.e. to see a reference
+References must be globally consistent and immutable - i.e. to see a reference
 allows one to verify the message contents, and no-one can forge a different
 message for which the reference is valid, not even the original sender. One
 implementation option, is to broadcast the same authenticated-encrypted blob to
 everyone, treat this blob as the content of the message, and use a hash of the
-message as the reference. (Those familiar with git will see the similarities
+message as the reference. (Those familiar with Git will see the similarities
 with their model of immutable commit objects.) [#Next]_
 
 There are two ways to know a valid reference - deriving it from the message
@@ -200,18 +200,24 @@ where max() gives the maximum element of a totally-ordered set, or |bot| if it
 is empty. We say a context c |sqsubset| c' ("strictly less advanced") iff
 |forall| u: c(u) = |bot| |or| c(u) |le| c'(u) and c |ne| c'.
 
-Unlike pre(m) and members(m), by(u) and context(m) depend implicitly on the set
-of messages that have been delivered so far, so might more accurately be
-denoted T.by(u) and T.context(m), where T is the current transcript.
+Unlike pre(m) and members(m), by(u) depends implicitly on the set of messages
+that have been delivered so far, so might more accurately be denoted T.by(u),
+where T is the current transcript. Though context(m) also refers to other
+messages, any valid transcript must contain the image of context(m) due to the
+topological delivery order, so it is unambiguous regardless of the transcript.
 
-Context is structurally equivalent to a `vector clock`_. As with vector clocks,
+Context is semantically equivalent to a `vector clock`_. As with vector clocks,
 malicious senders may "rewind" the context they are supposed to declare with
 each message. If this redundant information is trusted, this enables certain
-re-ordering attacks. TODO: give an example of this. To protect against this, we
-introduce *context consistency*: all messages must have a context that is
-strictly more advanced than the context of strictly earlier messages. Or, in
-other words, a message may not declare a parent that is before a parent of a
-strictly earlier message. Formally:
+re-ordering attacks. For example, I should not be allowed to claim that my
+last-received-from-A is 9, if I've already claimed that my last-received-from-B
+is 12, but in message 12, B claimed that their last-received-from-A is 10. (A
+more simple version of this with only 2 members is in the diagram below.)
+
+To protect against this, we introduce *context consistency*: all messages must
+have a context that is strictly more advanced than the context of strictly
+earlier messages. Or, in other words, a message may not declare a parent that
+is before a parent of a strictly earlier message. Formally:
 
 |forall| m', m |in| <: context(m') |sqsubset| context(m) (or equivalently)
 |forall| p' |in| pre(m'), p |in| pre(m): ¬ p |le| p' (TODO: prove the equiv)
@@ -253,11 +259,11 @@ By transitive reduction, no other q |ne| p |in| pre(m) may belong to anc(p), so
 q |notin| anc(p') |equiv| ¬ q |le| p' (for all p', q) as required. []
 
 So, we recommend that a real implementation should not encode context(m)
-explicitly, since it is redundant information that can lead to attacks.
+explicitly, since it often has redundant information that can lead to attacks.
 Instead, one should enforce that pre(m) is an anti-chain [#Nred]_, which
 automatically achieves context consistency. Then, one may locally calculate
 context(m) from pre(m), using the following recursive algorithm: TODO: write
-this, perhaps in the appendix.
+this and link to the appendix.
 
 .. _Vector clock: https://en.wikipedia.org/wiki/Vector_clock
 
@@ -317,13 +323,12 @@ Linear ordering and display
 ===========================
 
 It's unclear the "best" way to draw a causal order - there are many layout
-algorithms for general DAGs, that optimise for different aims. One approach,
-that we believe is suited for group messaging applications, is to convert the
-causal order into a total order (a linear sequence). These are simple to
-display, and intuitive as a human interface for our scenario.
-
-(To be clear, this conversion is only used for the human interface. The core
-system works entirely and directly on the causal order.)
+algorithms for general DAGs, that optimise for different aims. One approach we
+believe is suited for group messaging applications, is to convert the causal
+order into a total order (a linear sequence). These are simple to display, and
+intuitive as a human interface for our scenario. To be clear, this conversion
+is only used for the human interface. The core system works entirely and
+directly on the causal order.
 
 There are several caveats with linear conversions. This is not to discredit the
 general idea - and we don't have a simpler alternative - but we need to
@@ -336,7 +341,8 @@ To start with, there are a few properties that would be nice to achieve:
 - append-only: it does not need to insert newly-delivered messages (from the
   causally-ordered input) into the middle of a previous totally-ordered output.
   In a real application the user only sees the last few messages in the
-  sequence, and earlier ones are "beyond the scroll bar".
+  sequence, and earlier ones are "beyond the scroll bar", so messages inserted
+  there may never be seen.
 
 - responsive: it accepts all possible causal orders and may work on them
   immediately, without waiting for any other input
@@ -377,22 +383,27 @@ A linear conversion follows quite naturally from topics already discussed: the
 order in which we deliver messages (for any given user) is a total order, being
 a topological sort of the causal order. It is practically free to implement -
 when the engine delivers a new message, we immediately append it to the current
-display, and record the index for later lookup. This conversion is both
-responsive and append-only, but not globally consistent. It is also nearly
-identical to existing chat behaviours, save for the buffering of dangling
-messages. [#Nres]_ Given its simplicity and relatively good properties, we
-recommend this as the default for implementors.
+display, and record the index for later lookup. This conversion is responsive
+and append-only, but not globally consistent. It is also nearly identical to
+existing chat behaviours, save for the buffering of dangling messages. [#Nres]_
+Given its simplicity and relatively good properties, we recommend this as the
+default for implementors.
 
-Another approach achieves global consistency, but adds some latency: we can
-bounce all messages via a central server, which then dictates the ordering for
-everyone. This strategy is popular with many existing non-secure messaging
-systems. If we embed the causal order, we can re-gain end-to-end security, and
-protect against the server from violating causality or context. However, we
-still need another mechanism to ensure that it is providing the same total
-ordering to everyone (the whole point of doing this in the first place). TODO:
-outline a mechanism for this. Or, we could omit this mechanism, fall back to
-"delivery order" as above, then "global consistency" would be achieved on a
-best-effort basis, assuming the server is trustworthy.
+Another approach achieves global consistency, but sacrifices one of the other
+properties: bounce all messages via a central server, which dictates the
+ordering for everyone. This strategy is popular with many existing non-secure
+messaging systems. If we embed the causal order, we can re-gain end-to-end
+security, and protect against the server from violating causality or context.
+Then, we must either sacrifice responsiveness by waiting until the server has
+reflected our message back to us before displaying it, or sacrifice append-only
+and be prepared to insert others' messages before messages that we sent and
+displayed immediately.
+
+In either case, we still need *another mechanism* to ensure that the server is
+providing the same total ordering to everyone, the whole point of doing this in
+the first place. TODO: outline a mechanism for this. Or, we could omit this
+mechanism and fall back to "delivery order" as above; then "global consistency"
+would be achieved on a best-effort basis, relying on the server being friendly.
 
 .. [#Nres] One may argue that due to this buffering, we are sacrificing
     responsiveness; however there is no *additional* waiting beyond what is
