@@ -17,16 +17,21 @@ within the lifetime of the session, outside of the initial startup or final
 shutdown. There are multiple *other* partners, each of which may try to act
 against each other. This demands additional security requirements, such as
 ensuring that everyone sees the same consistent view of the session, and that
-members can only read a partial view of the entire session, namely between the
-time(s) they join and part. [#N1]_
+members can read the session only between the time(s) they join and part.
+[#Npart]_ We also work towards the premise that every member knows the session
+membership, again only during their participation in the session. [#Npriv]_
 
 In this document, we discuss these core theoretical issues, and outline some
-approachs for dealing with them. We assume a relatively-efficient broadcast
-operation, that costs near-constant time with the number of participants.
+approaches for dealing with them. We assume a relatively-efficient broadcast
+operation, that costs near-constant time with the number of participants. We
+consider both synchronous and asynchronous sessions and the security properties
+we can achieve for each. Our model is that for the latter, latency is high and
+that it's normal for members to sometimes be absent (i.e. unable to respond)
+independently of other members.
 
 First, we present a scheme for representing the distributed nature of group
 communication - namely a causal order of messages, encoded by unforgeable
-immutable pointers. [#N2]_ This protects against network attacks (reorder,
+immutable pointers. [#Nhash]_ This protects against network attacks (reorder,
 replay, drop of messages) as well as simplifying the problem of freshness. It
 protects against malicious insiders, enforcing session transcript consistency
 between all members. We also discuss human interfaces for this, including how
@@ -41,10 +46,15 @@ key-rotation ratchets based on more complex greeting protocols, as an extension
 of 2-party DH that current ratchets are based on, by analysing the dependency
 relationships between the messages of the underlying protocol.
 
-.. [#N1] Some group communication applications do not require this, but we
+.. [#Npart] Some group communication applications do not require this, but we
     think it is consistent with intuition for a "*private*" chat.
 
-.. [#N2] These are implemented using cryptographic hashes, but the mentioned
+.. [#Npriv] An more private mode would make non-contact members pseudonymous,
+    but this requires more advanced techniques which we overlook for now.
+    However, we believe that our proposals do not prevent this from being
+    implemented as an extension in the future.
+
+.. [#Nhash] These are implemented using cryptographic hashes, but the mentioned
     properties are the important interfaces to the overall scheme.
 
 .. toctree::
