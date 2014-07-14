@@ -326,16 +326,42 @@ It's unclear the "best" way to draw a causal order - there are many layout
 algorithms for general DAGs, that optimise for different aims. One approach we
 believe is suited for group messaging applications, is to convert the causal
 order into a total order (a linear sequence). These are simple to display, and
-intuitive as a human interface for our scenario. To be clear, this conversion
-is only used for the human interface. The core system works entirely and
-directly on the causal order.
+intuitive as a human interface for our scenario. To be clear, this artifical
+order is only used for display; the core system, responsible for security
+properties, works entirely and directly on the causal order.
 
-There are several caveats with linear conversions. This is not to discredit the
-general idea - and we don't have a simpler alternative - but we need to
-consider the trade-offs carefully, when selecting a conversion for our system.
-To start with, there are a few properties that would be nice to achieve:
+Our first conclusion is that any linear order must not be the *only* interface
+shown to a user. This is because *all* linear conversions are open to context
+rebinding. The simplest case of a non-total causal order is G = (a |rightarrow|
+o |leftarrow| b). WLOG suppose that our conversion turns G into (o, a, b) for
+some user. Given only this information in a display, they cannot distinguish
+(o, a) from (a, b) - yet a is not a real parent of b. This might lead to an
+attack - if one user sees (o) and has a reasonable expectation that someone
+will reply (b), then they may say (a) in the hope that (b) will be linearised
+after it, rebinding its context.
 
-- globally consistent / canonical: the conversion outputs the same total order
+To protect against this, implementions *must* distinguish messages whose pre(m)
+does not equal the singleton set containing the preceding message in the total
+order; and *should* provide a secondary interface that shows the underlying
+causal order. This may be implemented as parent reference annotations, hover
+behaviour that highlights the real parents, or some other UX innovation. For
+example:
+
+| Alice: innocent question?
+| Chuck: incriminating question?
+| Bob: innocent answer! [2]
+
+The [2] means "the last message(s) the sender saw was the 2nd message above
+this one". Messages without annotations are implicitly [1] - this has the nice
+advantage of looking identical to the unadorned messages of a naive system that
+does not guarantee causal order. In practise, only a minority of messages need
+to be annotated as above; we believe this is acceptable for usability.
+
+There are several caveats when selecting a linear conversion, and we need to
+consider the trade-offs carefully. Let us introduce a few properties that would
+be nice to achieve:
+
+- globally-consistent / canonical: the conversion outputs the same total order
   for every user, given the same causal order input
 
 - append-only: it does not need to insert newly-delivered messages (from the
@@ -347,27 +373,11 @@ To start with, there are a few properties that would be nice to achieve:
 - responsive: it accepts all possible causal orders and may work on them
   immediately, without waiting for any other input
 
-Unfortunately, we cannot achieve all three at once. Suppose we can. The most
-basic case of a non-total causal order is G = (a |rightarrow| o |leftarrow| b).
-WLOG suppose our conversion turns G into (o, a, b) for all users. If one user
-receives (o |leftarrow| b), and does not receive (a) for a long time, a
-responsive conversion must output (o, b). But then when they finally receive
+Unfortunately, we cannot achieve all three at once. Suppose we can. WLOG
+suppose our conversion turns G (from above) into (o, a, b) for all users. If
+one user receives (o |leftarrow| b), and does not receive (a) for a long time,
+a responsive conversion must output (o, b). But then when they finally receive
 (a), they will need to insert this into the middle of the previous output.
-
-Furthermore, all linear conversions are open to misinterpretation. WLOG suppose
-that our conversion turns G into (o, a, b) for some user. In an bare total
-order, (o, a) is indistinguishable from (a, b); yet a is not a real parent of b
-in the causal order. An otherwise-honest member may arrange this on purpose, to
-elicit a message (b) from another, whose real context (o) is re-bound to the
-false-but-apparent context (a) by others' conversions.
-
-Granted, this is quite abstract and it's not clear that a real attack based on
-this would be very serious. Thus for now, we continue with the idea of a linear
-conversion. But, we strongly recommend that implementions offer a way for users
-to determine the real underlying causal order, even as they are presented a
-total order as the main interface. This may be implemented as parent reference
-annotations, or as hover behaviour that highlights the real parents, or some
-other UX innovation.
 
 Delivery order
 --------------
@@ -375,9 +385,9 @@ Delivery order
 We believe that global consistency is the least important out of the three
 properties above, and therefore sacrificing it is the best option. It's
 questionable that it gains us anything - false-but-apparent parents are not
-semantic, so it's not important if they are different across users; and ideally
-we would have a secondary interface to indicate the real causal order *anyway*,
-to guard against context rebinding.
+semantic, so it's not important if they are different across users. As noted
+above, we ought to have a secondary interface to indicate the real causal order
+*anyway*, to guard against context rebinding.
 
 A linear conversion follows quite naturally from topics already discussed: the
 order in which we deliver messages (for any given user) is a total order, being
