@@ -195,8 +195,10 @@ Transcript consistency
 Transcript consistency may be constructed simply out of our message consistency
 primitives. When we want to part, we send a "intend-to-part" message zm then
 wait for explicit acks to it. Once it is fully-acked, we reach consistency for
-all of anc(zm), which we'll treat as the transcript. Since we won't have any
-future chances to receive the acks, we should wait longer than usual for this.
+all of anc(zm), which we'll treat as the transcript. Recipients should ack
+these immediately, instead of the usual behaviour of waiting a grace period for
+the user to manually send an implicit ack. Since there won't be any future
+chance to receive the acks, the sender may wait longer than usual for full-ack.
 
 If we receive implicit or explicit acks to any message other than zm, we must
 ignore them or display/log them permanently with a warning, because we have no
