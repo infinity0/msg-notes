@@ -25,9 +25,9 @@ In this document, we discuss these core theoretical issues, and outline some
 approaches for dealing with them. We assume a relatively-efficient broadcast
 operation, that costs near-constant time with the number of participants. We
 consider both synchronous and asynchronous sessions and the security properties
-we can achieve for each. Our model is that for the latter, latency is high and
-that it's normal for members to sometimes be absent (i.e. unable to respond)
-independently of other members.
+we can achieve for each. Our model is that for the latter, it's normal for
+members to sometimes be absent (unable to respond) independently of others,
+expected latency is high, and so freshness expiry periods may be longer.
 
 First, we present a scheme for representing the distributed nature of group
 communication - namely a causal order of messages, encoded by unforgeable

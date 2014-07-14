@@ -32,22 +32,27 @@ looking at "local receive time of a packet" - it assumes a trusted network.
 Heartbeats
 ----------
 
-We detect non-causal drops by periodically sending out heartbeats, and waiting
-for these to be fully-acked (i.e. setting an ack-monitor on them); this proves
-freshness as of the time of the heartbeat. To be efficient, we can omit a
-heartbeat if we've already sent another message inside the previous period,
+We detect non-causal drops by periodically [#Nreg]_ sending out heartbeats, and
+waiting for these to be fully-acked (i.e. setting an ack-monitor on them); this
+proves freshness as of the time of the heartbeat. To be efficient, we can omit
+a heartbeat if we've already sent another message inside the previous period,
 excluding explicit acks which don't need to be acked. We may refer to these
 messages as "implicit heartbeats", akin to implicit acks.
 
-If someone takes too long to ack a (implicit or explicit) heartbeat, we can
-indicate this in the UI, for example by dulling the user avatar.
+If someone takes too long to ack a (implicit or explicit) heartbeat, we should
+issue a warning to the effect of "user not present". This is a distinct warning
+from message-not-fully-acked - it is triggered for *each member* that fails to
+respond, it might have a different timeout than the former, and it would be
+indicated on a non-message UI element (since heartbeats might not be displayed
+explicitly) - for example by dulling the respective user avatar.
 
-If heartbeats are regular, they may be distinguished from actual messages even
-to an eavesdropper who can't read their contents. (The same may be said of
-regular explicit acks and identical-ciphertext resends, though these probably
-reveal less information.) In general, metadata security is a more complex
-topic, and it is unclear whether these things are a real security problem to be
-worth spending effort on, so we'll note the issue but won't pursue it here.
+.. [#Nreg] If heartbeats are regular, they may be distinguished from actual
+    messages even to an eavesdropper who can't read their contents. (The same
+    may be said of regular explicit acks and identical-ciphertext resends,
+    though these probably reveal less information.) In general, metadata
+    security is a more complex topic, and it is unclear whether these things
+    are a real security problem to be worth spending effort on, so we'll note
+    the issue but won't pursue it here.
 
 Presence and expiry
 ===================
@@ -69,33 +74,49 @@ Locally, we may integrate our heartbeats with these other mechanisms, for more
 accuracy and reliability. The exact logic will depend on the mechanism and what
 interfaces it provides for integration, but it should be fairly intuitive and
 straightforward. For example, the combined system should indicate presence when
-a user acks a heartbeat *or* any external mechanism indicates presence, and any
-of these should reset any expiry-based absence indicators.
+a member acks a heartbeat *or* any external mechanism indicates presence, and
+any of these should reset any expiry-based absence indicators.
 
-Absence is semantically distinct from parting the session - absent users still
-have the *right* to see messages, until they formally stop being a member of
-the session. This distinction supports the ability to have a long-running
-session where users go online and offline, but still want to see what was said
-during their absence. This is common for some existing hosted chat systems, but
-we can do this end-to-end too.
+Intended absence
+----------------
 
-The feature of long-term absences must be considered against the requirements
-of the greeting protocol. For example, some GKEs require all members to be
-present in order to complete execution. Then, supporting long-term absences is
-problematic, because this support will likely result in most of the session's
-lifetime having partial membership presence. To avoid this, we recommended that
-systems choose a greeting protocol that supports the forced-parting of absent
-members *without their input*.
+The only absence signal we have described so far is expiry of presence. This is
+a minimum measure to ensure safety - to detect the inability to communicate,
+either innocent (e.g. lack of signal) or malicious (e.g. censorship).
 
-If a session is active whilst a user is absent, this will cause non-full-ack
-warnings to be emitted. But this is expected because they are absent, so we can
-account for it: if the users who haven't acked a message are all absent, the
-severity of its non-full-ack warning should be reduced. Furthermore, the rate
-of resends should be reduced too, since we believe they won't succeed anyway.
-(However, if we have no other external presence mechanism, they should not be
-completely stopped - otherwise all parts of a partition will stop sending, and
-we'll never regain presence.) Later, when the absent user returns, the rate of
-resends should be restored, or even reset to the maximum.
+In some applications however, members may want to declare intentional absence
+from an ongoing session. This is semantically distinct from parting the session
+- absent users still have the *right* to see messages, so these should still be
+encrypted to their key. This allows us to support a long-running session where
+users go online and offline, but still want to see what was said during their
+absence. This is common with some existing centralised hosted chat systems, but
+we can achieve this end-to-end too. [#Nsrv]_ If no external presence mechanism
+supports this declaration, we may implement intended-absence messages that set
+the intended-absence state for the sender, but not otherwise displayed.
+
+Tracking intended-absence as a distinct state from unintended-absence, allows
+us to downgrade the severity of warnings that will fire due to it, since now we
+know that this is not due to an attack. For example, when a not-fully-acked
+warning is about to be emitted, if the users who haven't acked that message are
+all intended-absent, then the severity of the warning should be reduced. The
+rate of resends may be reduced too, since they won't succeed anyway. (If we
+have no other external presence mechanism though, they should not be stopped
+completely - otherwise all parts of a partition will stop sending, and we'll
+never regain presence.) Later when the absent user returns, the rate of resends
+should be restored, or even reset to the maximum.
+
+Absence must be considered when choosing a greeting protocol. A GKE implicitly
+requires the presence of certain participants, yet any member may unilaterally
+become absent (either declared or faked) and block it from succeeding. This may
+be a concern if membership operations are supposed to be reserved only for
+special members. As a baseline, we recommended that systems choose a greeting
+protocol that may part a member *without their own input*, otherwise anyone may
+block themselves from being parted. This topic will be explored in more detail
+in later parts.
+
+.. [#Nsrv] A dumb server that just stores-and-forwards the ciphertext may be
+    used as an optional component - this has no impact on security, but keeps
+    the session history available even in the case that all members go offline.
 
 Timestamps
 ==========
