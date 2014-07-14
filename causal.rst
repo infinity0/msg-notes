@@ -12,17 +12,18 @@ We work under the premise that members should be able to send messages without
 requiring approval from other parties. The basic distributed case is where two
 members each publish a message with the same context o, call them a, b, without
 having seen the other message first. Interpreting these messages within a total
-(linear) order, say [a, b], would change the context of b, adding a into it. So
-a total order cannot preserve context, under the no-approval premise.
+(linear) order, WLOG say (a, b), would change the context of b, adding a into
+it. So a total order cannot preserve context, under the no-approval premise.
 
 If we abandon the no-approval premise, and use a consensus algorithm to approve
 messages, then we achieve a total order. However, this requires interaction
-with other members of the session. We believe the cost of this is fatal to a
-normal user experience, and destroys any ability of the system to work in an
-asynchronous scenario. It increases the complexity of implementation, and the
-guarantees it provides are still much lower than the computationally-secure
-guarantees on context in our system. We will not discuss these further, but
-other projects are welcome to take this approach.
+with other members of the session *for every single message*; this makes it
+extremely difficult to work in an asynchronous scenario. Rejections must be
+handled manually - automatic retries are effectively a context rebinding attack
+upon yourself - we believe this is not a reasonable user experience. Finally,
+the guarantees of consensus algorithms are much lower than the computational
+security guarantees on context in our system. Therefore, we will not discuss
+these further, but other projects are welcome to do so.
 
 From these initial considerations, we choose a causal order for representing
 the relationships between messages, with a secondary total order with weaker
