@@ -118,9 +118,9 @@ other purpose, means that these need not have ack-monitors registered on them.
 Indeed, in the automatic case, this would result in an indefinite sequence of
 mutual acks - but see the next section for more discussion on this. However,
 ack-monitors for an implicit ack am sent directly after a sequence of explict
-acks, should also resend these whenever it resends am - because everyone must
-receive anc(am) to be able to deliver am, and we have no other local active
-mechanism to resend those explicit acks.
+acks from the same sender, should also resend these whenever it resends am -
+recipients must receive anc(am) to be able to deliver am, and we have no other
+local active mechanism to resend those explicit acks.
 
 An implicit ack, such as a normal user message, indicates "some" level [#Nack]_
 of understanding of previous messages. Automatic explict acks *should not* be

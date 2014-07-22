@@ -306,22 +306,23 @@ so may be verified within unit tests rather than as run-time checks. However,
 the last two may be broken if we naively accept any message (which declares its
 sender and direct parents) to be added to the data structure.
 
-Detecting non transitive reduction can be done using only information from m
-and anc(m). Since messages are only added to the data structure in topological
-order, everyone has this information, so they can detect this condition
-themselves. The merge algorithm includes this functionality, and it may be run
+Enforcing transitive reduction can be done using only information from m and
+anc(m). Since messages are only added to the data structure in topological
+order, everyone has this information so they can enforce it themselves.
+Messages that break this may simply be dropped, with a local UI warning as to
+the source. The merge algorithm includes this functionality, and it may be run
 on every received message including non-merges - see that chapter for details.
 
-Detecting non total ordering can be done only when delivering messages from
-both forks, which may not happen for everyone. To help this propagate, users
+Enforcing total ordering can be done only when someone accepts messages from
+both forks, which not everyone else might see. To help this propagate, users
 that see this condition, must re-broadcast all messages within both forks to
 everyone else, then leave the conversation with a BAIL error message (TODO:
 elaborate possible errors) that references both forks. Note that one of the
-references may have to be indirect if they already replied to the other fork,
-to preserve transitive reduction. This should never need to be 3 forks; bail
-should be immediate upon delivering 2 forks. It is not essential that everyone
-receives this, since lack of participation will indicate that something is
-wrong, but this helps to narrow down the cause.
+references may have to be indirect if we already replied to the other fork, to
+preserve transitive reduction. We should never need to do this for a triple
+fork; bail should be immediate upon attempting to deliver a double fork. It is
+not essential that everyone receives this, since lack of future participation
+will indicate that something is wrong, but this helps to narrow down the cause.
 
 Linear ordering and display
 ===========================
