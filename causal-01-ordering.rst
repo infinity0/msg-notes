@@ -126,13 +126,18 @@ layers like the UI. (Sometimes we use the term "accept" when "deliver" might be
 confused to mean "remote completion of a send", e.g. in "delivery receipt".)
 
 For each message m, if any of its parents p |in| pre(m) have not yet been
-delivered, we must place m in a queue, and wait for all of pre(m) to be
+delivered, we must place m in a buffer, and wait for all of pre(m) to be
 delivered first. This enforces a `topological order`_ and acyclicity, and
 ensures that if m was sent after p, then everyone else will see m after p. It
 also allows us to verify that the parent references are actually of real
 messages. (The sender should have already been authenticated by some other
 cryptographic means, before we even reach this stage.) Since |le| is
 transitive, in practise we deliver all of anc(m) before we deliver m.
+
+The buffer should be an LRU cache with a maximum size, to prevent malicious
+members from generating messages with non-existent parents that stay in the
+buffer indefinitely. This is safe; even if valid messages are dropped, the
+consistency system (next chapter) will be able to detect this and recover.
 
 Withholding some messages even though they are available to deliver without
 their ancestors, may seem like bad user experience. However, delivering them
@@ -141,7 +146,13 @@ like this sacrifices ordering and changes the original context of the message.
 for security; another interpretation is that messages without their ancestors
 *are not* what the sender intended, so it doesn't even make any semantic sense
 to deliver them. In the next chapter we talk about resend mechanisms, which
-should cut down the cases in practise where we must withhold messages.
+should cut down the cases in practise where we must buffer messages.
+
+One interface option is to show a "messages received out-of-order" notice. If
+you really must display their contents, you must do this separately from the
+main conversation interface, activated manually, and with a strong warning on
+the consequences of reading them - they may be fake messages, do not reply to
+them, etc etc. TODO: explore this further, with the requirements of SMS.
 
 The structure also lets us detect causal drops - drops of messages that caused
 (i.e. are *before*) a message we *have* received. We can have a grace period
@@ -164,13 +175,6 @@ contains unforgeable references to previous parent messages, so everything is
     Although these properties may seem abstract and not important to security,
     other more concrete properties that we elaborate in further chapters,
     depend on them.
-
-    One interface improvement could be to show the user a notice saying
-    "messages received out-of-order but not displayed due to lack of context".
-    If you feel you really must display their contents, you must do this
-    separately from the main conversation interface, activated manually, and
-    with a strong warning on the consequences of reading them - they may be
-    fake messages, do not reply to them, etc etc.
 
 Causal orders
 =============

@@ -70,11 +70,19 @@ cancelled on full-ack. [#Nimp]_
 
 At the very least, the user should be alerted if message consistency is not
 reached. On top of this, we should resend the message, in anticipation that our
-original message was not received for whatever reason. This should be the exact
-same ciphertext as was sent before - this makes it easy for the recipients to
-resolve any duplicates, and also allows us to resend a message originally by
-someone else. This implicit recovery technique results in a simpler protocol
-and transcript, without needing an explicit "ensure consistency" message.
+original message was not received for whatever reason. This implicit recovery
+technique results in a simpler protocol and transcript, without needing an
+explicit "ensure consistency" message.
+
+To simplify resends, we suggest to follow the "single-ciphertext principle" -
+each message is communicated as the same ciphertext for everyone, and this
+applies even if parts of it are encrypted to only a subset of the recipients.
+This makes it easy to detect duplicate resent messages, and also allows a
+member to resend a message authored by someone else, which is useful if the
+latter is absent. All members cache this ciphertext in case they have to resend
+it to others. When the message is fully-acked, the cached ciphertext may be
+deleted to save space. This caching should not affect security, since the
+threat model already includes an eavesdropper that stores all ciphertext.
 
 Optimising the exact policy of executing resends can get very complex, so we'll
 skip that discussion for now. In practise, we have been using an exponential
