@@ -7,4 +7,4 @@ Subtopics:
 .. toctree::
    :glob:
 
-   appendix-*
+   *

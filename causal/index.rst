@@ -51,4 +51,4 @@ Subtopics:
 .. toctree::
    :glob:
 
-   causal-*
+   *

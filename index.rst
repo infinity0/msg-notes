@@ -61,10 +61,10 @@ relationships between the messages of the underlying protocol.
    :glob:
    :maxdepth: 2
 
-   causal
+   causal/index
    greet
    ratchet
-   appendices
+   appendix/index
 
 Indices and tables
 ==================
