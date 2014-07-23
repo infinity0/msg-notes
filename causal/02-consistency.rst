@@ -89,7 +89,7 @@ skip that discussion for now. In practise, we have been using an exponential
 backoff algorithm, which seems to work adequately.
 
 .. [#Nvis] This definition becomes slightly more complex when we introduce
-    partial visibility; see that chapter for details.
+    :doc:`partial visibility <05-visibility>`; see that chapter for details.
 
 .. [#Nimp] An implementation should book-keep unacked recipients instead of
     acked ones: when delivered, each message has a set unackby(m) that starts
@@ -116,11 +116,10 @@ transcript causal order data structure, in order to track full-acks.
 There are some nuances about this. The fact the ack is explicit and carries no
 other purpose, means that these need not have ack-monitors registered on them.
 Indeed, in the automatic case, this would result in an indefinite sequence of
-mutual acks - but see the next section for more discussion on this. However,
-ack-monitors for an implicit ack am sent directly after a sequence of explict
-acks from the same sender, should also resend these whenever it resends am -
-recipients must receive anc(am) to be able to deliver am, and we have no other
-local active mechanism to resend those explicit acks.
+mutual acks. However, ack-monitors for an implicit ack am sent directly after a
+sequence of explict acks from the same sender, should also resend these
+whenever it resends am - recipients must receive anc(am) to be able to deliver
+am, and we have no other local active mechanism to resend those explicit acks.
 
 An implicit ack, such as a normal user message, indicates "some" level [#Nack]_
 of understanding of previous messages. Automatic explict acks *should not* be
@@ -179,11 +178,12 @@ consistent transcript - it is not in their interest to do so. So we don't need
 to *guarantee* that our own explicit acks are fully-acked. This avoids the
 Byzantine agreement problem.
 
-We *could* provide a guarantee even in the case of explicit acks, though. In
-the next chapter, we'll talk about heartbeats, which as hinted before, are
-automatic explicit acks, that result in an infinite sequence of mutual acks.
-But, this is unsuitable for some high-latency or asynchronous protocols, so we
-allow for the option to omit heartbeats, and talk about these separately.
+A related concept that *does* provide a guarantee for explicit acks, is
+:ref:`heartbeats <heartbeats>`. These can be thought of as automatic explicit
+acks that result in an infinite sequence of mutual acks. But their purpose is
+to ensure freshness rather than consistency, and their cost may be unsuitable
+for some asynchronous protocols. So we omit them here, and talk about them
+separately as an optional feature.
 
 The resend/dedupe scheme outlined above is quite minimal in the messages it
 chooses to resend. Of course we may do more active resending; however this may

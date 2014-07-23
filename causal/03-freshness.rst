@@ -29,6 +29,8 @@ The above achieves *end-to-end* security for freshness. By contrast, XMPP
 presence is not end-to-end secure - it assumes a trusted server. Neither is
 looking at "local receive time of a packet" - it assumes a trusted network.
 
+.. _heartbeats:
+
 Heartbeats
 ----------
 

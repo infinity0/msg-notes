@@ -137,7 +137,8 @@ transitive, in practise we deliver all of anc(m) before we deliver m.
 The buffer should be an LRU cache with a maximum size, to prevent malicious
 members from generating messages with non-existent parents that stay in the
 buffer indefinitely. This is safe; even if valid messages are dropped, the
-consistency system (next chapter) will be able to detect this and recover.
+:doc:`consistency <02-consistency>` system will detect this and recover by
+resending the dropped messages.
 
 Withholding some messages even though they are available to deliver without
 their ancestors, may seem like bad user experience. However, delivering them
@@ -145,8 +146,8 @@ like this sacrifices ordering and changes the original context of the message.
 [#Nhld]_ As mentioned previously, our threat model is that this may be critical
 for security; another interpretation is that messages without their ancestors
 *are not* what the sender intended, so it doesn't even make any semantic sense
-to deliver them. In the next chapter we talk about resend mechanisms, which
-should cut down the cases in practise where we must buffer messages.
+to deliver them. Our resend mechanisms should also reduce the cases in practise
+where we must buffer messages.
 
 One interface option is to show a "messages received out-of-order" notice. If
 you really must display their contents, you must do this separately from the
@@ -157,11 +158,10 @@ them, etc etc. TODO: explore this further, with the requirements of SMS.
 The structure also lets us detect causal drops - drops of messages that caused
 (i.e. are *before*) a message we *have* received. We can have a grace period
 waiting for parent messages to arrive, after which we can emit a UI warning
-("timed out waiting for intermediate messages"), or perform recovery techniques
-such as asking for a resend (next chapter). Detecting *non-causal drops* -
-drops of messages not-before a message we've already received (and therefore we
-don't see any references to) is more complex, and techniques for this will be
-covered in the chapter on freshness.
+("timed out waiting for intermediate messages") or perform recovery techniques.
+Detecting *non-causal drops* - drops of messages not-before a message we've
+already received, and therefore we don't see any references to - is more
+complex, and we will cover this in :doc:`freshness <03-freshness>`.
 
 If the first message has replay protection (e.g. if it is fresh), we also
 inductively gain this for the entire session. This is because each message
@@ -173,7 +173,7 @@ contains unforgeable references to previous parent messages, so everything is
     having incomplete anc(m) and it passes transitivity tests, semantically
     this will not be true, so your representation will not reflect reality.
     Although these properties may seem abstract and not important to security,
-    other more concrete properties that we elaborate in further chapters,
+    other more concrete properties that we elaborate on in further chapters,
     depend on them.
 
 Causal orders
@@ -264,15 +264,12 @@ q |notin| anc(p') |equiv| ¬ q |le| p' (for all p', q) as required. []
 
 So, we recommend that a real implementation should not encode context(m)
 explicitly, since it often has redundant information that can lead to attacks.
-Instead, one should enforce that pre(m) is an anti-chain [#Nred]_, which
+Instead, one should enforce that pre(m) is an anti-chain (see below), which
 automatically achieves context consistency. Then, one may locally calculate
 context(m) from pre(m), using the following recursive algorithm: TODO: write
 this and link to the appendix.
 
 .. _Vector clock: https://en.wikipedia.org/wiki/Vector_clock
-
-.. [#Nred] The merge algorithm, covered in a later section, includes a check
-    that pre(m) forms an anti-chain.
 
 Invariants
 ----------
@@ -310,8 +307,9 @@ Enforcing transitive reduction can be done using only information from m and
 anc(m). Since messages are only added to the data structure in topological
 order, everyone has this information so they can enforce it themselves.
 Messages that break this may simply be dropped, with a local UI warning as to
-the source. The merge algorithm includes this functionality, and it may be run
-on every received message including non-merges - see that chapter for details.
+the source. The :ref:`merge algorithm for DAGs <merge-algorithm>` includes a
+check that the inputs form an anti-chain, and it may be run on the pre(m) of
+every message accepted, including for single-parent messages.
 
 Enforcing total ordering can be done only when someone accepts messages from
 both forks, which not everyone else might see. To help this propagate, users

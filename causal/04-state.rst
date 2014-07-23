@@ -13,6 +13,8 @@ Global state
 Possible state types
 ````````````````````
 
+.. _merge-algorithm:
+
 General merge algorithm for DAGs
 --------------------------------
 

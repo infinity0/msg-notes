@@ -38,7 +38,7 @@ Some key-rotation ratchets implicitly preserve context, since the dependencies
 of which previous keys are used to protect each message matches the actual
 causal order of messages. Our explicit formal treatment here works outside of
 any ratchet, but we'll return to the relationships between ratchet message
-dependency and causal orders in another chapter.
+dependency and causal orders in :doc:`another chapter <../ratchet>`.
 
 We also explore more complex mechanics. For concurrent membership operations,
 we derive a merge algorithm over causal orders that satisfies intuitive notions
