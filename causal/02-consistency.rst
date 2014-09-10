@@ -6,12 +6,27 @@ Consistency
 .. include:: <mmlalias.txt>
 
 One necessary property of a group session is that everyone sees the same
-transcript - that is, the same set of messages and their relative orders. Our
-causal order already embeds the ordering within each message, so we only need
-to ensure consistency of the set of messages.
+transcript - that is, the same set of messages and their relative orders.
 
-Acknowledgements
-----------------
+Concepts
+========
+
+TODO
+
+Consistency is *not* consensus. Simpler than Byzantine fault tolerance, and
+actually solveable.
+
+First-order consistency - you know "everyone has seen this mesage", but you
+don't know if others know the same thing. That's OK, we actually don't need to
+achieve the latter.
+
+Incremental consistency, future checks, need a timer primitive.
+
+Clarify that warnings are persistent-state rather than point-events.
+- different terminology? maybe "set warn-state"
+
+Acks and full-ack
+=================
 
 We start by considering the smaller problem of message consistency. When we see
 a message, we want to be sure that everyone else also saw it. There are many
@@ -58,9 +73,9 @@ cause p to become fully-acked, and help r, s along on the way towards being so.
 This is an incremental consistency; full-acks occur as new messages arrive,
 instead of all at once at the end of the session. This means that the number of
 messages whose consistency we are uncertain of, should stay roughly constant
-during the lifetime of a normal session. A further advantage is that there is
-no bandwidth overhead - we make use of the information we are already sending.
+during the lifetime of a normal session.
 
+How to ensure these "last few" messages are eventually fully-acked though?
 Between when a message is delivered and is fully-acked, we need a way to check
 that it does eventually become fully-acked, and warn or try to recover if this
 process takes too long. The mechanism must be pro-active, so it must be outside
@@ -69,24 +84,7 @@ it would be activated after a grace period after delivery, and de-activated or
 cancelled on full-ack. [#Nimp]_
 
 At the very least, the user should be alerted if message consistency is not
-reached. On top of this, we should resend the message, in anticipation that our
-original message was not received for whatever reason. This implicit recovery
-technique results in a simpler protocol and transcript, without needing an
-explicit "ensure consistency" message.
-
-To simplify resends, we suggest to follow the "single-ciphertext principle" -
-each message is communicated as the same ciphertext for everyone, and this
-applies even if parts of it are encrypted to only a subset of the recipients.
-This makes it easy to detect duplicate resent messages, and also allows a
-member to resend a message authored by someone else, which is useful if the
-latter is absent. All members cache this ciphertext in case they have to resend
-it to others. When the message is fully-acked, the cached ciphertext may be
-deleted to save space. This caching should not affect security, since the
-threat model already includes an eavesdropper that stores all ciphertext.
-
-Optimising the exact policy of executing resends can get very complex, so we'll
-skip that discussion for now. In practise, we have been using an exponential
-backoff algorithm, which seems to work adequately.
+reached.
 
 .. [#Nvis] This definition becomes slightly more complex when we introduce
     :doc:`partial visibility <05-visibility>`; see that chapter for details.
@@ -101,8 +99,8 @@ backoff algorithm, which seems to work adequately.
     when unackby(m) becomes empty. TODO: maybe move this to an "implementation"
     appendix.
 
-Automatic and explicit acks
----------------------------
+Automatic and explicit
+----------------------
 
 Another thing the ack-monitor should handle is (for messages sent by others) if
 we don't ack the message ourselves. In a busy session, the user will likely
@@ -115,11 +113,8 @@ transcript causal order data structure, in order to track full-acks.
 
 There are some nuances about this. The fact the ack is explicit and carries no
 other purpose, means that these need not have ack-monitors registered on them.
-Indeed, in the automatic case, this would result in an indefinite sequence of
-mutual acks. However, ack-monitors for an implicit ack am sent directly after a
-sequence of explict acks from the same sender, should also resend these
-whenever it resends am - recipients must receive anc(am) to be able to deliver
-am, and we have no other local active mechanism to resend those explicit acks.
+(Indeed, in the automatic case, this would result in an indefinite sequence of
+mutual acks.)
 
 An implicit ack, such as a normal user message, indicates "some" level [#Nack]_
 of understanding of previous messages. Automatic explict acks *should not* be
@@ -138,8 +133,60 @@ These would be implemented as a supplement to the automatic ack. Other
 projects' terminology for these concepts include "delivery receipt" for
 "automatic ack" and "read receipt" for "manual/pseudo-manual ack".
 
-Resends and deduplication
--------------------------
+.. _Pond: https://pond.imperialviolet.org/tech.html
+
+.. [#Nack] The user could avoid reading the messages, but we can't do anything
+    about this, and it's dubious that this could be abused for benefit. In the
+    *average* case, there is some understanding.
+
+Reliability
+===========
+
+TODO
+- how reliability and consistency are related
+- discuss end-to-end reliability vs assuming limited transport/server reliability
+
+Resends
+-------
+
+Easiest to do resends in the ack-monitor.
+
+For as long as the message is not fully-acked, we may periodically resend the
+message, in anticipation that our original message was not received for
+whatever reason. This implicit recovery technique results in a simpler protocol
+and transcript, without needing an explicit "ensure consistency" message.
+
+However, ack-monitors for an implicit ack am sent directly after a
+sequence of explict acks from the same sender, should also resend these
+whenever it resends am - recipients must receive anc(am) to be able to deliver
+am, and we have no other local active mechanism to resend those explicit acks.
+
+TODO
+- refine resends of previous explicit-acks (cf code)
+
+TODO
+- ack timing rules, cancel warn-states after full-ack
+- discuss overhead of acks
+
+To simplify resends, we suggest to follow the "single-ciphertext principle" -
+each message is communicated as the same ciphertext for everyone, and this
+applies even if parts of it are encrypted to only a subset of the recipients.
+This makes it easy to detect duplicate resent messages, and also allows a
+member to resend a message authored by someone else, which is useful if the
+latter is absent. All members cache this ciphertext in case they have to resend
+it to others. When the message is fully-acked, the cached ciphertext may be
+deleted to save space. This caching should not affect security, since the
+threat model already includes an eavesdropper that stores all ciphertext.
+
+TODO
+- refine auto-deletion of old ciphertext that has been full-acked (cf code)
+
+Optimising the exact policy of executing resends can get very complex, so we'll
+skip that discussion for now. In practise, we have been using an exponential
+backoff algorithm, which seems to work adequately.
+
+Duplicates
+----------
 
 When you receive a duplicate message m, this is (in a normal situation) because
 someone thinks we haven't acked the message yet - and perhaps we haven't. So we
@@ -191,14 +238,10 @@ open up the path to DoS attacks. More research can be done here; for now we
 have a good basic scheme with a clear logical justification, so we'll continue
 with other topics.
 
-.. _Pond: https://pond.imperialviolet.org/tech.html
-
-.. [#Nack] The user could avoid reading the messages, but we can't do anything
-    about this, and it's dubious that this could be abused for benefit. In the
-    *average* case, there is some understanding.
-
 Transcript consistency
-----------------------
+======================
+
+Future consistency, consistency-on-leave.
 
 Transcript consistency may be constructed simply out of our message consistency
 primitives. When we want to part, we send a "intend-to-part" message zm then

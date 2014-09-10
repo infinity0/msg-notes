@@ -5,8 +5,11 @@ Ordering
 .. include:: <isotech.txt>
 .. include:: <mmlalias.txt>
 
+Data structures
+===============
+
 Partial orders
-==============
+--------------
 
 A `partial ordering`_ is a set of elements with a binary relation |le| that is
 reflexive, antisymmetric, and transitive. It can be represented as a `directed
@@ -65,8 +68,8 @@ because redundant information is a security liability - it needs to be checked
 for consistency, from the "canonical" sources of the information, but then we
 might as well use those sources to directly calculate this information. Here,
 enforcing immediacy and independence actually lets us achieve some stronger
-guarantees "for free" - e.g., protection against rewinding of vector clocks, a
-few paragraphs below.
+guarantees "for free" - e.g., protection against rewinding of vector clocks;
+see next section.
 
 References must be globally consistent and immutable - i.e. to see a reference
 allows one to verify the message contents, and no-one can forge a different
@@ -114,70 +117,8 @@ someone else might be trying to trick *you*.
     reference, but it's not clear whether this is such a big deal. TODO: move
     to appendix and discuss further.
 
-Detecting replays, reorders, and causal drops
----------------------------------------------
-
-Encoding the partial order already enables us to detect messages that are
-received out-of-order. Actually, we completely ignore the receive-order, and
-instead try to build up our data structure based on the parent references. When
-we add a message to the structure, we emit a "delivery" event, which makes the
-message available for subsequent operations, as well as consumption by higher
-layers like the UI. (Sometimes we use the term "accept" when "deliver" might be
-confused to mean "remote completion of a send", e.g. in "delivery receipt".)
-
-For each message m, if any of its parents p |in| pre(m) have not yet been
-delivered, we must place m in a buffer, and wait for all of pre(m) to be
-delivered first. This enforces a `topological order`_ and acyclicity, and
-ensures that if m was sent after p, then everyone else will see m after p. It
-also allows us to verify that the parent references are actually of real
-messages. (The sender should have already been authenticated by some other
-cryptographic means, before we even reach this stage.) Since |le| is
-transitive, in practise we deliver all of anc(m) before we deliver m.
-
-The buffer should be an LRU cache with a maximum size, to prevent malicious
-members from generating messages with non-existent parents that stay in the
-buffer indefinitely. This is safe; even if valid messages are dropped, the
-:doc:`consistency <02-consistency>` system will detect this and recover by
-resending the dropped messages.
-
-Withholding some messages even though they are available to deliver without
-their ancestors, may seem like bad user experience. However, delivering them
-like this sacrifices ordering and changes the original context of the message.
-[#Nhld]_ As mentioned previously, our threat model is that this may be critical
-for security; another interpretation is that messages without their ancestors
-*are not* what the sender intended, so it doesn't even make any semantic sense
-to deliver them. Our resend mechanisms should also reduce the cases in practise
-where we must buffer messages.
-
-One interface option is to show a "messages received out-of-order" notice. If
-you really must display their contents, you must do this separately from the
-main conversation interface, activated manually, and with a strong warning on
-the consequences of reading them - they may be fake messages, do not reply to
-them, etc etc. TODO: explore this further, with the requirements of SMS.
-
-The structure also lets us detect causal drops - drops of messages that caused
-(i.e. are *before*) a message we *have* received. We can have a grace period
-waiting for parent messages to arrive, after which we can emit a UI warning
-("timed out waiting for intermediate messages") or perform recovery techniques.
-Detecting *non-causal drops* - drops of messages not-before a message we've
-already received, and therefore we don't see any references to - is more
-complex, and we will cover this in :doc:`freshness <03-freshness>`.
-
-If the first message has replay protection (e.g. if it is fresh), we also
-inductively gain this for the entire session. This is because each message
-contains unforgeable references to previous parent messages, so everything is
-"anchored" to the first non-replayable message.
-
-.. [#Nhld] One major problem is we effectively break transitivity of the parent
-    references. By which we mean, even if you somehow implement |le| despite
-    having incomplete anc(m) and it passes transitivity tests, semantically
-    this will not be true, so your representation will not reflect reality.
-    Although these properties may seem abstract and not important to security,
-    other more concrete properties that we elaborate on in further chapters,
-    depend on them.
-
 Causal orders
-=============
+-------------
 
 We can do a lot of things already with just a partial order, but adding some
 extra structure results in stronger guarantees and enables more complex
@@ -263,11 +204,11 @@ By transitive reduction, no other q |ne| p |in| pre(m) may belong to anc(p), so
 q |notin| anc(p') |equiv| ¬ q |le| p' (for all p', q) as required. []
 
 So, we recommend that a real implementation should not encode context(m)
-explicitly, since it often has redundant information that can lead to attacks.
-Instead, one should enforce that pre(m) is an anti-chain (see below), which
-automatically achieves context consistency. Then, one may locally calculate
-context(m) from pre(m), using the following recursive algorithm: TODO: write
-this and link to the appendix.
+explicitly, since it generally has redundant information that will need to be
+checked. Instead, one should enforce that pre(m) is an anti-chain (see below),
+which automatically achieves context consistency. Then, one may locally
+calculate context(m) from pre(m), using the following recursive algorithm:
+TODO: write this and link to the appendix.
 
 .. _Vector clock: https://en.wikipedia.org/wiki/Vector_clock
 
@@ -298,10 +239,17 @@ Let us summarise the invariants on our data structure.
 
   |forall| u: |forall| m, m' |in| by(u): m |le| m' |or| m' |le| m
 
-The first three ought to be true independently of what data a message declares,
-so may be verified within unit tests rather than as run-time checks. However,
-the last two may be broken if we naively accept any message (which declares its
-sender and direct parents) to be added to the data structure.
+Enforcement
+===========
+
+The first three invariants about |le| ought to be true independently of what
+data a message declares, so may be verified within unit tests rather than as
+run-time checks. However, the last two may be broken if we naively accept any
+message (which declares its sender and direct parents) to be added to the data
+structure.
+
+TODO: reword/reflow the above and next section, which enforces (in a different
+sense) transitivity.
 
 Enforcing transitive reduction can be done using only information from m and
 anc(m). Since messages are only added to the data structure in topological
@@ -322,103 +270,76 @@ fork; bail should be immediate upon attempting to deliver a double fork. It is
 not essential that everyone receives this, since lack of future participation
 will indicate that something is wrong, but this helps to narrow down the cause.
 
-Linear ordering and display
-===========================
+Detecting transport attacks
+---------------------------
 
-It's unclear the "best" way to draw a causal order - there are many layout
-algorithms for general DAGs, that optimise for different aims. One approach we
-believe is suited for group messaging applications, is to convert the causal
-order into a total order (a linear sequence). These are simple to display, and
-intuitive as a human interface for our scenario. To be clear, this artifical
-order is only used for display; the core system, responsible for security
-properties, works entirely and directly on the causal order.
+By "transport attacks", we mean replays, re-orders, and drops of packets, by an
+attacker that can affect the physical communications infrastructure. We assume
+that external cryptographic authentication will allow us to detect packets
+injected by a non-member.
 
-Our first conclusion is that any linear order must not be the *only* interface
-shown to a user. This is because *all* linear conversions are open to context
-rebinding. The simplest case of a non-total causal order is G = (a |rightarrow|
-o |leftarrow| b). WLOG suppose that our conversion turns G into (o, a, b) for
-some user. Given only this information in a display, they cannot distinguish
-(o, a) from (a, b) - yet a is not a real parent of b. This might lead to an
-attack - if one user sees (o) and has a reasonable expectation that someone
-will reply (b), then they may say (a) in the hope that (b) will be linearised
-after it, rebinding its context.
+Encoding the partial order already enables us to detect messages that are
+received out-of-order. Actually, we completely ignore the receive-order, and
+instead try to build up our data structure based on the parent references. When
+we add a message to the structure, we emit a "delivery" event, which makes the
+message available for subsequent operations, as well as consumption by higher
+layers like the UI. (Sometimes we use the term "accept" when "deliver" might be
+confused to mean "remote completion of a send", e.g. in "delivery receipt".)
 
-To protect against this, implementions *must* distinguish messages whose pre(m)
-does not equal the singleton set containing the preceding message in the total
-order; and *should* provide a secondary interface that shows the underlying
-causal order. This may be implemented as parent reference annotations, hover
-behaviour that highlights the real parents, or some other UX innovation. For
-example:
+For each message m, if any of its parents p |in| pre(m) have not yet been
+delivered, we must place m in a buffer, and wait for all of pre(m) to be
+delivered first. This enforces a `topological order`_ and acyclicity, and
+ensures that if m was sent after p, then everyone else will see m after p. It
+also allows us to verify that the parent references are actually of real
+messages. (The sender should have already been authenticated by some other
+cryptographic means, before we even reach this stage.) Since |le| is
+transitive, in practise we deliver all of anc(m) before we deliver m.
 
-| Alice: innocent question?
-| Chuck: incriminating question?
-| Bob: innocent answer! [2]
+The buffer should be an LRU cache with a maximum size, to prevent malicious
+members from generating messages with non-existent parents that stay in the
+buffer indefinitely. This is safe; even if valid messages are dropped, the
+:doc:`consistency <02-consistency>` system will detect this and recover by
+resending the dropped messages.
 
-The [2] means "the last message(s) the sender saw was the 2nd message above
-this one". Messages without annotations are implicitly [1] - this has the nice
-advantage of looking identical to the unadorned messages of a naive system that
-does not guarantee causal order. In practise, only a minority of messages need
-to be annotated as above; we believe this is acceptable for usability.
+The structure also lets us detect causal drops - drops of messages that caused
+(i.e. are *before*) a message we *have* received. We can have a grace period
+waiting for parent messages to arrive, after which we can emit a UI warning
+("timed out waiting for intermediate messages") or perform recovery techniques.
+Detecting *non-causal drops* - drops of messages not-before a message we've
+already received, and therefore we don't see any references to - is more
+complex, and we will cover this in :doc:`freshness <03-freshness>`.
 
-There are several caveats when selecting a linear conversion, and we need to
-consider the trade-offs carefully. Let us introduce a few properties that would
-be nice to achieve:
+If the first message has replay protection (e.g. if it is fresh), we also
+inductively gain this for the entire session. This is because each message
+contains unforgeable references to previous parent messages, so everything is
+"anchored" to the first non-replayable message.
 
-- globally-consistent / canonical: the conversion outputs the same total order
-  for every user, given the same causal order input
+Disadvantages of buffering
+--------------------------
 
-- append-only: it does not need to insert newly-delivered messages (from the
-  causally-ordered input) into the middle of a previous totally-ordered output.
-  In a real application the user only sees the last few messages in the
-  sequence, and earlier ones are "beyond the scroll bar", so messages inserted
-  there may never be seen.
+Withholding some messages even though they are available to deliver without
+their ancestors, may seem like bad user experience. However, delivering them
+like this sacrifices ordering and changes the original context of the message.
+[#Nhld]_ As mentioned previously, our threat model is that this may be critical
+for security; another interpretation is that messages without their ancestors
+*are not* what the sender intended, so it doesn't even make any semantic sense
+to deliver them. Our resend mechanisms should also reduce the cases in practise
+where we must buffer messages.
 
-- responsive: it accepts all possible causal orders and may work on them
-  immediately, without waiting for any other input
+One interface option is to show a "messages received out-of-order" notice. If
+you really must display their contents, you must do this separately from the
+main conversation interface, activated manually, and with a strong warning on
+the consequences of reading them - they may be fake messages, do not reply to
+them, etc etc. TODO: explore this further, with the requirements of SMS.
 
-Unfortunately, we cannot achieve all three at once. Suppose we can. WLOG
-suppose our conversion turns G (from above) into (o, a, b) for all users. If
-one user receives (o |leftarrow| b), and does not receive (a) for a long time,
-a responsive conversion must output (o, b). But then when they finally receive
-(a), they will need to insert this into the middle of the previous output.
+TODO: more arguments around causal ordering and buffering
+- "display immediately" strategy only guarantees to "1-level parent only"; rest of history forgeable
+- buffering can be invisible to end-user, so no visible degradation (weak point though)
 
-Delivery order
---------------
-
-We believe that global consistency is the least important out of the three
-properties above, and therefore sacrificing it is the best option. It's
-questionable that it gains us anything - false-but-apparent parents are not
-semantic, so it's not important if they are different across users. As noted
-above, we ought to have a secondary interface to indicate the real causal order
-*anyway*, to guard against context rebinding.
-
-A linear conversion follows quite naturally from topics already discussed: the
-order in which we deliver messages (for any given user) is a total order, being
-a topological sort of the causal order. It is practically free to implement -
-when the engine delivers a new message, we immediately append it to the current
-display, and record the index for later lookup. This conversion is responsive
-and append-only, but not globally consistent. It is also nearly identical to
-existing chat behaviours, save for the buffering of dangling messages. [#Nres]_
-Given its simplicity and relatively good properties, we recommend this as the
-default for implementors.
-
-Another approach achieves global consistency, but sacrifices one of the other
-properties: bounce all messages via a central server, which dictates the
-ordering for everyone. This strategy is popular with many existing non-secure
-messaging systems. If we embed the causal order, we can re-gain end-to-end
-security, and protect against the server from violating causality or context.
-Then, we must either sacrifice responsiveness by waiting until the server has
-reflected our message back to us before displaying it, or sacrifice append-only
-and be prepared to insert others' messages before messages that we sent and
-displayed immediately.
-
-In either case, we still need *another mechanism* to ensure that the server is
-providing the same total ordering to everyone, the whole point of doing this in
-the first place. TODO: outline a mechanism for this. Or, we could omit this
-mechanism and fall back to "delivery order" as above; then "global consistency"
-would be achieved on a best-effort basis, relying on the server being friendly.
-
-.. [#Nres] One may argue that due to this buffering, we are sacrificing
-    responsiveness; however there is no *additional* waiting beyond what is
-    necessary in order to achieve causal consistency - as discussed before,
-    sacrificing the latter results in less security and greater complexity.
+.. [#Nhld] One major problem is we effectively break transitivity of the parent
+    references. By which we mean, even if you somehow implement |le| despite
+    having incomplete anc(m) and it passes transitivity tests, semantically
+    this will not be true, so your representation will not reflect reality.
+    Although these properties may seem abstract and not important to security,
+    other more concrete properties that we elaborate on in further chapters,
+    depend on them.

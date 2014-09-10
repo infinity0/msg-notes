@@ -142,8 +142,8 @@ TODO Clock reliability.
 Verifiability.
 
 If a member lies in the contents of a message, this is not something the
-messaging protocol can detect. We treat timestamps as a similar sort data - no
-other part of the system or the security models depends on them being even
+messaging protocol can detect. We treat timestamps as a similar sort of data -
+no other part of the system or the security models depends on them being even
 vaguely correct.
 
 Simplest option is to use local delivery time of a message. Additionally, each
