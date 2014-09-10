@@ -1,6 +1,10 @@
 # Theory topics
 
 - explain why we should hash ciphertext and/or (plaintext *and* a secret)
+- explain that we assume message ID that can be calculated as soon as it is
+  decrypted (for incoming messages) or encrypted (for outgoing messages). this
+  doesn't hold true for mpCAT's "parent hashes", which can only be calculated
+  after the message is echoed back from the server.
 
 # Misc
 

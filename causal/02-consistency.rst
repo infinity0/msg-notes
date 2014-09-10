@@ -139,6 +139,8 @@ projects' terminology for these concepts include "delivery receipt" for
     about this, and it's dubious that this could be abused for benefit. In the
     *average* case, there is some understanding.
 
+.. _reliability:
+
 Reliability
 ===========
 

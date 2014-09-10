@@ -94,7 +94,6 @@ someone else might be trying to trick *you*.
 .. _Partial ordering: https://en.wikipedia.org/wiki/Partially_ordered_set
 .. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
 .. _Directed acyclic graph: https://en.wikipedia.org/wiki/Directed_acyclic_graph
-.. _Topological order: https://en.wikipedia.org/wiki/Topological_sort
 .. _Anti-chain: https://en.wikipedia.org/wiki/Antichain
 .. _Light cone: https://en.wikipedia.org/wiki/Light_cone
 
@@ -148,8 +147,8 @@ is empty. We say a context c |sqsubset| c' ("strictly less advanced") iff
 Unlike pre(m) and members(m), by(u) depends implicitly on the set of messages
 that have been delivered so far, so might more accurately be denoted T.by(u),
 where T is the current transcript. Though context(m) also refers to other
-messages, any valid transcript must contain the image of context(m) due to the
-topological delivery order, so it is unambiguous regardless of the transcript.
+messages, any valid transcript that contains m must already contain anc(m) and
+therefore context(m), so it is unambiguous regardless of the transcript.
 
 Context is semantically equivalent to a `vector clock`_. As with vector clocks,
 malicious senders may "rewind" the context they are supposed to declare with
@@ -242,14 +241,23 @@ Let us summarise the invariants on our data structure.
 Enforcement
 ===========
 
-The first three invariants about |le| ought to be true independently of what
-data a message declares, so may be verified within unit tests rather than as
-run-time checks. However, the last two may be broken if we naively accept any
-message (which declares its sender and direct parents) to be added to the data
-structure.
+Reflexivity and anti-symmetry do not need special protocol-level behaviour to
+enforce; implementations might check their own correctness with unit tests.
 
-TODO: reword/reflow the above and next section, which enforces (in a different
-sense) transitivity.
+Enforcing transitivity means we must show messages to the user in `topological
+order`_. For each incoming m, if any of its parents p |in| pre(m) have not yet
+been delivered [#Ndlv]_, we place m in a buffer, and wait for all of pre(m) to
+be delivered first before delivering m. This allows us to verify that the
+parent references are actually of real messages. To protect against DoS, the
+buffer should be limited in size; see the next section for details.
+
+The result is that we deliver all of anc(m) before we deliver m, i.e. the user
+sees anc(m) before m. This applies for messages the user sends too, assuming we
+set the parents correctly. This achieves transitivity on the local side, but it
+is quite hard to detect whether *other* members are doing this. (One option is
+to require m to mention *all* of anc(m), but obviously this costs too much
+bandwidth.) But earlier, we argued that there is no incentive for users to
+cheat this; we will make this assumption going forward.
 
 Enforcing transitive reduction can be done using only information from m and
 anc(m). Since messages are only added to the data structure in topological
@@ -270,6 +278,14 @@ fork; bail should be immediate upon attempting to deliver a double fork. It is
 not essential that everyone receives this, since lack of future participation
 will indicate that something is wrong, but this helps to narrow down the cause.
 
+.. _Topological order: https://en.wikipedia.org/wiki/Topological_sort
+
+.. [#Ndlv] Here, "deliver" is standard distributed-systems terminology, and
+    means to make the message available to higher layers for subsequent
+    operations, such as displaying in a UI. However, in messaging contexts,
+    "deliver" might be confused to mean "remote completion of a send", e.g. as
+    in "delivery receipt"; so sometimes we'll use the term "accept" instead.
+
 Detecting transport attacks
 ---------------------------
 
@@ -278,33 +294,40 @@ attacker that can affect the physical communications infrastructure. We assume
 that external cryptographic authentication will allow us to detect packets
 injected by a non-member.
 
-Encoding the partial order already enables us to detect messages that are
-received out-of-order. Actually, we completely ignore the receive-order, and
-instead try to build up our data structure based on the parent references. When
-we add a message to the structure, we emit a "delivery" event, which makes the
-message available for subsequent operations, as well as consumption by higher
-layers like the UI. (Sometimes we use the term "accept" when "deliver" might be
-confused to mean "remote completion of a send", e.g. in "delivery receipt".)
+Detecting replays is easy, assuming that our decryption scheme verify-decrypts
+duplicate packets so that they have the same parents (and contents and other
+metadata); then this will be deserialised into an already-existing node in our
+transcript graph. If we cache the ciphertext (and there is :ref:`reason to
+<reliability>`), we don't even need to verify-decrypt it the second time.
 
-For each message m, if any of its parents p |in| pre(m) have not yet been
-delivered, we must place m in a buffer, and wait for all of pre(m) to be
-delivered first. This enforces a `topological order`_ and acyclicity, and
-ensures that if m was sent after p, then everyone else will see m after p. It
-also allows us to verify that the parent references are actually of real
-messages. (The sender should have already been authenticated by some other
-cryptographic means, before we even reach this stage.) Since |le| is
-transitive, in practise we deliver all of anc(m) before we deliver m.
+Enforcing transitivity is basically an exercise in correcting the order of
+messages, so we are already covered there.
 
-The buffer should be an LRU cache with a maximum size, to prevent malicious
-members from generating messages with non-existent parents that stay in the
-buffer indefinitely. This is safe; even if valid messages are dropped, the
-:doc:`consistency <02-consistency>` system will detect this and recover by
-resending the dropped messages.
+For drops, let's consider "causal drops" first - drops of messages that caused
+(are *before*) a message we *have* already received. Messages in the delivery
+buffer will have three types of parents: those already accepted, those also in
+the buffer, and those that haven't been seen yet. For the last case, this is
+either because the parent p doesn't exist (the sender is lying), or because the
+transport is being unreliable or malicious.
 
-The structure also lets us detect causal drops - drops of messages that caused
-(i.e. are *before*) a message we *have* received. We can have a grace period
-waiting for parent messages to arrive, after which we can emit a UI warning
-("timed out waiting for intermediate messages") or perform recovery techniques.
+We don't assume the transport is reliable, so we should give it a grace period
+within which to expect p to arrive. After this expires, we should assume that
+we'll never receive p for whatever reason, emit a UI warning ("referenced
+message p didn't arrive on time"), and drop messages that transitively point to
+p from the buffer. This is safe even if p turns out to be real and we receive
+it later; others' :ref:`reliability <reliability>` schemes will detect this and
+resend us the dropped messages. If we do eventually receive p later, we should
+cancel the warning, or at least downgrade its severity, based on how timely we
+expect the transport to be.
+
+If we never receive p, we cannot know *for sure* whether the sender was lying
+or the transport was malicious. In the basic case, there is no incentive for
+the sender to lie, but if we just *assume* the transport is malicious (and take
+some action A in response to this) then ironically we *give* the sender an
+incentive to lie - they can frame the transport to induce us to do A, which may
+have unintended consequences. So, we should be careful in how we communicate
+this fault to the user, and not imply blame on any party.
+
 Detecting *non-causal drops* - drops of messages not-before a message we've
 already received, and therefore we don't see any references to - is more
 complex, and we will cover this in :doc:`freshness <03-freshness>`.
