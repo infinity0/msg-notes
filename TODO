@@ -1,0 +1,36 @@
+# Theory topics
+
+- more arguments around causal ordering and buffering
+  - "display immediately" strategy only guarantees to "1-level parent only"; rest of history forgeable
+  - buffering can be invisible to end-user, so no visible degradation (weak point though)
+
+- linearisation - could minor-warn/notice for messages that are "badly-ordered"
+- mention a server-dictated order
+
+- probably split up "ordering"
+
+- clarify that warnings are persistent-state rather than point-events
+  - different terminology? maybe "set warn-state"
+
+- ack timing rules, cancel warn-states after full-ack
+- discuss overhead of acks
+
+- maybe split recovery/resends/dupes into separate "reliability" chapter
+- discuss end-to-end reliability and server limited reliability
+  - how reliability and consistency should be together
+  - why incremental consistency is important
+
+- refine auto-deletion of old ciphertext that has been full-acked (cf code)
+- refine resends of previous explicit-acks (cf code)
+
+- explain why we should hash ciphertext and/or (plaintext *and* a secret)
+
+# Misc
+
+- move "tangents" (as pointed out by michael) to better places, maybe appendix
+
+- It'd be easier to read if some typographic conventions are
+  honoured in the writing. I'd suggest to use :math:``
+  environments for all formulaic content as well as variable
+  references. This would render variables (such as "u" and "a")
+  usually in italics, and make reading much simpler.
