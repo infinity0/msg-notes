@@ -119,13 +119,9 @@ someone else might be trying to trick *you*.
 Causal orders
 -------------
 
-We can do a lot of things already with just a partial order, but adding some
-extra structure results in stronger guarantees and enables more complex
-behaviours. We do not make immediate use of this extra structure, but we
-introduce them now, to identify some intuitive properties missing from a
-partial order, and so that you are familiar with them later.
-
-In a causal ordering, each message is associated with exactly one *sender* and
+Partial orders can be used to describe the relative ordering of neutral events.
+In a causal order, we introduce agents that can observe and generate events. In
+the context of messaging, each event is a message with exactly one *sender* and
 a set of *recipients*, collectively called its *members*. Define **by(u)** as
 the set of all messages sent by u. This set is totally-ordered on |le|, i.e.
 every element is either before or after every other. Roughly, this constrains

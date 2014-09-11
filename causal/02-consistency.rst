@@ -13,6 +13,9 @@ Concepts
 
 TODO
 
+Consistency as verifying recipients. (Transitivity verifies parents, standard
+crypto authentication verifies the sender.)
+
 Consistency is *not* consensus. Simpler than Byzantine fault tolerance, and
 actually solveable.
 
