@@ -28,6 +28,8 @@ Incremental consistency, future checks, need a timer primitive.
 Clarify that warnings are persistent-state rather than point-events.
 - different terminology? maybe "set warn-state"
 
+.. _full-ack:
+
 Acks and full-ack
 =================
 

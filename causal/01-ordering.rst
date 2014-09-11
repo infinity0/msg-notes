@@ -333,32 +333,56 @@ inductively gain this for the entire session. This is because each message
 contains unforgeable references to previous parent messages, so everything is
 "anchored" to the first non-replayable message.
 
-Disadvantages of buffering
---------------------------
+Concerns about buffering
+------------------------
 
-Withholding some messages even though they are available to deliver without
-their ancestors, may seem like bad user experience. However, delivering them
-like this sacrifices ordering and changes the original context of the message.
-[#Nhld]_ As mentioned previously, our threat model is that this may be critical
-for security; another interpretation is that messages without their ancestors
-*are not* what the sender intended, so it doesn't even make any semantic sense
-to deliver them. Our resend mechanisms should also reduce the cases in practise
-where we must buffer messages.
+Delaying some messages in order to enforce transitivity, may seem like bad user
+experience. However, this is to be contrasted with the "display immediately on
+receive" strategy, which breaks many security properties we consider critical:
 
-One interface option is to show a "messages received out-of-order" notice. If
-you really must display their contents, you must do this separately from the
-main conversation interface, activated manually, and with a strong warning on
-the consequences of reading them - they may be fake messages, do not reply to
-them, etc etc. TODO: explore this further, with the requirements of SMS.
+- It sacrifices ordering, and changes the original context of the message, so
+  that a receiving user might interpret it differently from what the sender
+  intended. This might lead to a context-rebinding attack. Another perspective
+  is that messages without their ancestors *are not* what the sender intended,
+  so it doesn't even make any semantic sense to deliver them.
 
-TODO: more arguments around causal ordering and buffering
-- "display immediately" strategy only guarantees to "1-level parent only"; rest of history forgeable
-- buffering can be invisible to end-user, so no visible degradation (weak point though)
+- Even worse, when the user then sends a message of their own, any parents p we
+  set are only semantically valid to one level, because we didn't wait for
+  previous ancestors before showing p to the user. That is, a message m with
+  pre(m) only means that the sender saw pre(m) and not all of anc(m). This
+  breaks transitivity.
 
-.. [#Nhld] One major problem is we effectively break transitivity of the parent
-    references. By which we mean, even if you somehow implement |le| despite
-    having incomplete anc(m) and it passes transitivity tests, semantically
-    this will not be true, so your representation will not reflect reality.
-    Although these properties may seem abstract and not important to security,
-    other more concrete properties that we elaborate on in further chapters,
-    depend on them.
+- This leaves us with no other opportunity to inform others when we *do* see
+  the messages of anc(m) - pre(m). We would need a separate mechanism for this,
+  instead of it being implicit in the fact that we sent m. This makes it more
+  costly to achieve incremental consistency.
+
+Buffering can be invisible to the end-user. If they don't see this behaviour,
+then there is no "experience" degradation to complain about. This may seem a
+little facetious, but it is basically what TCP does - if higher-sequence
+packets arrive earlier than lower-sequence ones, they are buffered completely
+invisibly to higher-layer applications and to the user.
+
+One might argue that immediacy is more important in high-latency use cases, but
+it's not clear why merely increasing the timescale should affect that. If a
+message p takes 10 time units to arrive, what is the problem with delaying a
+causally-later message m that took 2 units to arrive, for 8 units, regardless
+of whether the time unit is seconds or hours? If 10 time units is unacceptably
+long, then *that* is the root problem, not the buffering. We can detect this
+once we see m, and request a resend of p. To save space, we won't discuss such
+mechanisms here, merely note that the possibility exists. The resend mechanisms
+we discuss in the next chapter are all implicit, but might also help.
+
+We may think of other ways to reduce the delay. If the transport can deliver
+larger packets without splitting them, then whenever the user sends a message
+m, we can "piggyback" all messages from anc(m) that are not :ref:`fully-acked
+<full-ack>` alongside m. This ensures that no-one will miss any of anc(m) that
+they don't already have. (This exists already as an ad-hoc practice in email,
+where often people leave a quoted parent in the body of their own message.)
+
+Yet another option is to allow users to see when the delivery buffer is
+non-empty, so that they at least expect to see more messages in the future.
+It's unclear if this would be actually useful or just frustrating. We should
+probably not display the *contents* of the messages in the buffer; since the
+user is likely to ignore any warnings and refer to these contents in any
+subsequent messages they send, breaking our semantics.
