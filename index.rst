@@ -21,8 +21,8 @@ members can read the session only between the time(s) they join and part.
 [#Npart]_ We also work towards the premise that every member knows the session
 membership, again only during their participation in the session. [#Npriv]_
 
-In this document, we discuss these core theoretical issues, and outline some
-approaches for dealing with them. We assume a relatively-efficient broadcast
+In this document, we discuss these theoretical issues, and outline approaches
+for dealing with them. We assume an efficient packet/cell/stanza broadcast
 operation, that costs near-constant time with the number of participants. We
 consider both synchronous and asynchronous sessions and the security properties
 we can achieve for each. Our model is that for the latter, it's normal for
