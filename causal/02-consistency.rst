@@ -11,42 +11,67 @@ transcript - that is, the same set of messages and their relative orders.
 Concepts
 ========
 
-TODO
+Consistency can be viewed as a case of metadata verification. Each message has
+a sender, a history, and a set of recipients. We verify the sender using
+cryptographic authentication, verify history by enforcing transitivity, and now
+we need a way to verify recipients, aka ensure consistency.
 
-Consistency as verifying recipients. (Transitivity verifies parents, standard
-crypto authentication verifies the sender.)
+Consistency is *not* consensus. Consensus is the problem of agreeing on a
+future value or action, that has not been decided yet. With consistency, we
+only need to agree on what has already happened in the past. So we don't need
+to use Byzantine fault tolerance techniques (which have probabilistic success),
+and can achieve a stronger guarantee with simpler techniques.
 
-Consistency is *not* consensus. Simpler than Byzantine fault tolerance, and
-actually solveable.
+With consistency, we only achieve "first-order" knowledge - that is, for each
+message m, from the point of view of a member u, u knows (P) everyone has seen
+m, but u doesn't know if (Q) others know P, nor if (R) they know u knows P,
+etc. That's OK; we don't foresee any situation where we need those latter
+properties, so they are lesser concerns. For comparison, consensus requires us
+to achieve `common knowledge`_ (i.e. "infinite-order" knowledge).
 
-First-order consistency - you know "everyone has seen this mesage", but you
-don't know if others know the same thing. That's OK, we actually don't need to
-achieve the latter.
+Previous proposals for consistency have typically involved running a process at
+the end of a session, to ensure consistency for the whole session. The process
+is simple to describe but quite costly in terms of information that needs to be
+exchanged for mutual verification.
 
-Incremental consistency, future checks, need a timer primitive.
+We prefer an incremental model of consistency, where we continually verify the
+other recipients of messages we delivered. Our causal order provides enough
+bookkeeping information over the lifetime of the session, such that there is
+minimal communication overhead in doing so.
 
-Clarify that warnings are persistent-state rather than point-events.
-- different terminology? maybe "set warn-state"
+Since we are verifying other recipients, this must be done *after* we deliver
+the message (either as the sender or a recipient). If our transport breaks and
+we receive no more messages, consistency must not default to "OK". So our
+mechanism must include an expiry after which we warn that consistency has not
+been reached. That is, we need a timer primitive; we cannot just implement
+consistency checks as part of a packet receive-handler.
+
+As with drop detection, if we reach a good state (here, consistency) *after*
+the timeout, we should cancel the warning or at least downgrade its severity.
+Also, here the warning is associated with a message that is *already displayed*
+to the user. Therefore, it is important that the warning is shown not as a
+point-event for the user to dismiss and forget, but as a persistent state
+shown together with the message, in the same space and time.
+
+.. _Common knowledge: https://en.wikipedia.org/wiki/Common_knowledge_(logic)
 
 .. _full-ack:
 
 Acks and full-ack
 =================
 
-We start by considering the smaller problem of message consistency. When we see
-a message, we want to be sure that everyone else also saw it. There are many
-possible reasons why someone might not see a message intended for them, and
-often it is innocent. Rather than trying to enumerate and detect all possible
-failures, we aim for a certainly-good state. We can be sure that r saw m, if we
-see a message by r that refers to m. Conveniently, we already have the
-mechanics for this in our causal order, namely the property that every message
-refers (transitively) to all its ancestors.
+We start by looking at per-message consistency. When we see a message, we want
+to be sure that everyone else also saw it. Rather than trying to enumerate and
+detect all possible failures, we aim for a certainly-good state. We can be sure
+that r saw m, if we see a message by r that refers to m. Conveniently, we
+already have the mechanics for this in our causal order, namely the property
+that every message refers (transitively) to all its ancestors.
 
-Define a message m to be **acked-by** r iff |exists| m' |in| by(r): m < m'.
-Define a message m to be **fully-acked** iff |forall| r |in| recipients(m): m
+Define that a message m is **acked-by** r iff |exists| m' |in| by(r): m < m'.
+Define that a message m is **fully-acked** iff |forall| r |in| recipients(m): m
 is acked-by r. [#Nvis]_ Both of these depend implicitly on the current
-transcript. In our terms, an "ack" is simply any message that refers to a
-previous one (the one being acked), not necessarily a special ACK message.
+transcript. An "ack" is simply any message that refers to a previous one (the
+one being acked), not necessarily a special ACK message. [#Nimp]_
 
 Once a message is acked by everyone else, we are certain that they have seen
 it, and we reach message consistency. If we did not send the message, we must
@@ -56,8 +81,8 @@ longer need to worry about it. In a valid transcript, a message m becomes
 fully-acked at the same point for everyone, namely when a process delivers all
 the direct acks { min(by(r) |cap| des(m)) | r |in| recipients(m) }, des(m)
 being the descendant messages of m. Notice the similarity in structure to the
-definition of context(m) - one may think of these acks as a "future" context(m)
-which (if full-ack is reached) contains no |bot| values.
+definition of context(m) - one may think of these as a "future" context(m).
+If and when full-ack is reached, this will contain no |bot| values.
 
 .. digraph:: acks
 
@@ -76,27 +101,23 @@ Background colours indicate authorship, red borders indicate messages that are
 not yet fully-acked. If blue then sends a message referring to r, s, it will
 cause p to become fully-acked, and help r, s along on the way towards being so.
 This is an incremental consistency; full-acks occur as new messages arrive,
-instead of all at once at the end of the session. This means that the number of
-messages whose consistency we are uncertain of, should stay roughly constant
-during the lifetime of a normal session.
+instead of all at once at the end of the session.
 
-How to ensure these "last few" messages are eventually fully-acked though?
 Between when a message is delivered and is fully-acked, we need a way to check
 that it does eventually become fully-acked, and warn or try to recover if this
 process takes too long. The mechanism must be pro-active, so it must be outside
-of the packet send/recv logic. We'll call this an "ack-monitor", and typically
-it would be activated after a grace period after delivery, and de-activated or
-cancelled on full-ack. [#Nimp]_
-
-At the very least, the user should be alerted if message consistency is not
-reached.
+of the packet send/recv logic. We'll call this an "ack-monitor", and it would
+be activated on delivery and de-activated on full-ack. The basic behaviour is
+to warn the user if full-ack is not reached within a grace period. More complex
+behaviours that reduce the failure rate, which is vital for usability, are
+discussed next.
 
 .. [#Nvis] This definition becomes slightly more complex when we introduce
     :doc:`partial visibility <05-visibility>`; see that chapter for details.
 
-.. [#Nimp] An implementation should book-keep unacked recipients instead of
-    acked ones: when delivered, each message has a set unackby(m) that starts
-    off equal to recipients(m), and gradually becomes empty as later messages
+.. [#Nimp] For space-efficiency, one should store *unacked* recipients instead
+    of acked ones: when delivered, each message has a set unackby(m) that is
+    equal to recipients(m), and it gradually becomes empty as later messages
     (that ack it) are delivered. When the set becomes empty, its ack-monitor is
     cancelled and a "fully-acked" event is emitted. It is also useful to track
     a set unacked() of messages not-yet fully-acked in the current transcript.
@@ -107,7 +128,7 @@ reached.
 Automatic and explicit
 ----------------------
 
-Another thing the ack-monitor should handle is (for messages sent by others) if
+The ack-monitor should also handle the case (for messages sent by others) where
 we don't ack the message ourselves. In a busy session, the user will likely
 send a message within the grace period *anyway*, that will be implictly treated
 as an ack. In this case, we don't need to do anything. However, at the end of a
@@ -118,8 +139,9 @@ transcript causal order data structure, in order to track full-acks.
 
 There are some nuances about this. The fact the ack is explicit and carries no
 other purpose, means that these need not have ack-monitors registered on them.
-(Indeed, in the automatic case, this would result in an indefinite sequence of
-mutual acks.)
+(In the automatic case, this would result in an indefinite sequence of mutual
+acks. This achieves freshness, as described in the next section, but is not
+useful for consistency so we'll skip it for now.)
 
 An implicit ack, such as a normal user message, indicates "some" level [#Nack]_
 of understanding of previous messages. Automatic explict acks *should not* be
