@@ -171,9 +171,63 @@ projects' terminology for these concepts include "delivery receipt" for
 Reliability
 ===========
 
-TODO
-- how reliability and consistency are related
-- discuss end-to-end reliability vs assuming limited transport/server reliability
+Consistency requires reliability. If some messages aren't received by everyone,
+then of course we can't verify consistency.
+
+It is quite common for cryptographic systems to ignore reliability, and assume
+it will be covered by a lower layer. The universal prevalence of TCP today
+probably encourages this. However, our group messaging scenario introduces some
+failure modes that cannot be recovered from by a lower layer, and this section
+will explain these and propose a fix. Such failures will eventually cause a
+failure of our consistency checks, so it is "safe" to ignore reliability; but
+unnecessary failures are bad user experience and may incentivise people to
+choose a less secure application, so should be avoided where possible.
+
+To demonstrate what we mean by "unnecessary failures", we'll talk briefly about
+existing reliability mechanisms. Typically, these will continually resend a
+packet until it gets a transport-level ack from the recipient. These are not
+authenticated cryptographically, so transport-level delivery claims are not
+to be trusted, which is why we have message-level acks above. A malicious
+transport-level attacker can also just drop any packets to break reliability.
+However, there are other failure modes that *honest* transports can't recover
+from, but that *can* be recovered from at the end-to-end message level.
+
+TCP doesn't communicate ack failures to higher layers. If your partner drops
+their connection right after your message is passed to TCP, an ack will never
+be received. Our application might automatically start a new TCP session later,
+but this won't know about the lost message from the previous session, resulting
+eventually in consistency failure. In the instant messaging case, these types
+of failure may be rare, but they are still unnecessary. And they become much
+more common and problematic if we want to support asynchronous messaging, where
+not all users are online at once - there is no Internet standard for a generic
+reliable asynchronous transport. [#Neml]_
+
+With transports that run to a third party, such as a TCP session to a central
+reflector server, the transport layer does not detect end-to-end reliability
+failures, even if the server is honest. No matter how hard the server tries to
+guarantee simultaneous presence, some clients may be offline when a packet is
+first sent. Some servers try to mitigate this, by resending packets to those
+offline clients when they come back online. In XMPP, several mechanisms exist
+that approximate this: `session resumption`_ for short transport failures, and
+`discussion history`_ as ad-hoc opportunistic context on joining a channel.
+However, in both cases the scope of reliability is limited, either time-wise or
+packet-count-wise. This is an inherent limitation of public servers: they are
+unable to offer *unconditional* end-to-end reliability since this requires
+unconditional buffering of unacked packets, but that may be abused by malicious
+clients resulting in denial of service. By contrast, clients have the incentive
+to indefinitely buffer their own not-fully-acked messages.
+
+That is not to say transport-level, or third-party, or non-authenticated,
+reliability schemes are useless. They are quite cheap to run, and recover from
+most failures. But the non-recoverable failure rate is much higher in certain
+environments or for certain use-cases, so it is prudent to implement a more
+expensive but more robust authenticated end-to-end scheme.
+
+.. _Session resumption: http://xmpp.org/extensions/xep-0198.html#resumption
+.. _Discussion history: http://xmpp.org/extensions/xep-0045.html#enter-history
+
+.. [#Neml] Email resending is application specific, has a lot of baggage, and
+    is generally considered unsuitable to build clean applications on top of.
 
 Resends
 -------
