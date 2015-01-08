@@ -41,7 +41,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'msg-notes'
-copyright = u'2014, Ximin Luo'
+copyright = u'2014-2015 Mega Limited, licensed under CC-BY-SA-4.0'
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the

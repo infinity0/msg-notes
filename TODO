@@ -1,5 +1,6 @@
 # Theory topics
 
+- distinguish between sender (of a packet) and author (of a message)
 - explain why we should hash ciphertext and/or (plaintext *and* a secret)
 - explain that we assume message ID that can be calculated as soon as it is
   decrypted (for incoming messages) or encrypted (for outgoing messages). this
