@@ -86,6 +86,7 @@ to resolve.
    causal/index
    greet
    ratchet
+   hci
    appendix/index
 
 Indices and tables

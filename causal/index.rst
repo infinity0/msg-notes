@@ -25,6 +25,10 @@ the guarantees of consensus algorithms are much lower than the computational
 security guarantees on context in our system. Therefore, we will not discuss
 these further, but other projects are welcome to do so.
 
+(In other words, if we don't use a consensus mechanism for approving/rejecting
+messages, then the underlying history graph is a partial order - *even if* we
+have a server or leader to linearise events.)
+
 From these initial considerations, we choose a causal order for representing
 the relationships between messages, with a secondary total order with weaker
 guarantees used only for user interface purposes. We explore how to execute
