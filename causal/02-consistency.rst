@@ -258,8 +258,14 @@ This makes it easy to detect duplicate resent messages, and also allows a
 member to resend a message authored by someone else, which is useful if the
 latter is absent. All members cache this ciphertext in case they have to resend
 it to others. When the message is fully-acked, the cached ciphertext may be
-deleted to save space. This caching should not affect security, since the
+deleted to save space. This should not affect security of the data, since the
 threat model already includes an eavesdropper that stores all ciphertext.
+
+However, if an entity can observe multiple recipients receiving the same
+ciphertext - such as an XMPP server - then this links the members. Hiding this
+metadata is outside of the scope of this chapter, and the single-ciphertext
+principle is no worse than existing systems; but newer systems that try to
+explicitly provide unlinkability will need to think about this.
 
 TODO
 - refine auto-deletion of old ciphertext that has been full-acked (cf code)

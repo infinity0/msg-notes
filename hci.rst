@@ -83,43 +83,47 @@ Some suggestions include:
   notice for that member, (hopefully) conveying to the local user that a
   temporary lack of an exclusion notice means they are not yet excluded.
 
+.. _hci-ordering:
+
 Messages received out-of-order
 ------------------------------
 
 We guarantee ordering - roughly, that messages are seen by recipients in the
 order in which they were sent - by buffering messages received out-of-order.
 Say Alice sends messages (1) and (2) to Bob. If the transport is unreliable and
-Bob receives (2) first, then we won't display (2) until we receives (1), so
+Bob receives (2) first, then we won't display (2) until we receive (1), so
 that we can display both in the correct order.
 
 If we don't receive (1) after a reasonable time, we *might* try to communicate
-this to the user - a notice like "message (2) received out-of-order" or
-"expected older messages (1) not yet arrived", or some other UI indicator. We
-could also offer some advice on why this might be happening - but we should
-avoid giving a false impression on *the exact cause* - the symptom could either
+this to the user - e.g. a notice like "(2) received out-of-order; waiting for
+older (1)". Importantly, we must not display the *contents* of these messages
+in waiting, to avoid breaking our security assumptions. [#buf]_ We could also
+offer some advice on why this might be happening, but in a way that avoids
+giving a false impression on *the exact cause*: the symptom could either
 indicate an unreliable transport, or an attack by the transport, or even
-another member, but *we don't know which*. Importantly, we must not display the
-*contents* of held messages, for security reasons. [#buf]_
+another member, but *we don't know which*.
 
 On the other hand, the above may add unnecessary complexity to the UX, and
 burden the user with information that is hard to take action on. So, we might
 just simply ignore when messages are being held in the buffer - i.e. to not
 reveal this to the user at all, and pretend that we haven't received (2), to
-avoid frustrating the user. This is a reasonable approach too, especially if we
-also have freshness expiry indicators (see section on heartbeats below), which
-would trigger if held messages remain in the buffer for too long.
+avoid frustrating the user. This may seem unnatural at first, but it is quite
+common for transport schemes that provide ordering guarantees - e.g. in TCP, if
+higher-sequence packets arrive earlier than lower-sequence ones, they are
+buffered completely invisibly to higher-layer applications and to the user.
 
-.. [#buf] More precisely: later on when we want to send message (3), the group
-    consistency system also communicates "we have seen all messages up to and
-    including (2)" to others. Representing "we have seen (2) but not (1)" would
-    be much more complex, and we have not yet devised a way to do this. So the
-    UI must honour the former - otherwise, we indirectly lie to others that "we
-    have seen (1)" when we haven't, breaking the security assumptions of our
-    system. (If we will definitely not send any more messages, then we *could*
-    display (2) - but this is extra complexity that is probaby best to avoid
-    initially.) I believe this tradeoff is worth it for the strong security
-    guarantees; there is an ongoing discussion in the community about this.
-    TODO(xl): maybe replace this with a link to the relevant section.
+As a failsafe to this simple option, we can trigger a warning if held messages
+remain in the buffer for too long. Optionally, we could automatically end the
+session and then display the contents of the buffered out-of-order messages -
+this is safe because there are no further messages to be sent, so there is no
+longer any chance of breaking the aforementioned security assumptions.
+
+.. [#buf] Whenever we send a message, we also implicitly acknowledge all
+    previous messages, in an efficient way. If we send a message after showing
+    some messages but not their parents, then this acknowledgement is a lie
+    that propogates and corrupts other members' views of the session and its
+    consistency. See :ref:`consistency-without-reliability` for a more detailed
+    exploration of this.
 
 Messages not yet acknowledged
 -----------------------------

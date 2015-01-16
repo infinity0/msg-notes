@@ -333,56 +333,91 @@ inductively gain this for the entire session. This is because each message
 contains unforgeable references to previous parent messages, so everything is
 "anchored" to the first non-replayable message.
 
-Concerns about buffering
-------------------------
+Buffering and asynchronous operation
+====================================
 
-Delaying some messages in order to enforce transitivity, may seem like bad user
-experience. However, this is to be contrasted with the "display immediately on
-receive" strategy, which breaks many security properties we consider critical:
+Our strong ordering (transitivity) approach requires a reliable transport. If a
+message is dropped, this prevents later messages from being displayed. We can
+improve this with end-to-end recovery (explained :ref:`next <reliability>`),
+but this is less effective in an asynchronous scenario, i.e. where members may
+not online at the same time. We depend more heavily on a third-party service to
+store-and-forward messages in an intelligent way, e.g. to resend ciphertext
+even if the original sender is offline. In the worst case where no two members
+are online simultaneously, this dependency becomes an absolute *requirement*.
 
-- It sacrifices ordering, and changes the original context of the message, so
-  that a receiving user might interpret it differently from what the sender
-  intended. This might lead to a context-rebinding attack. Another perspective
-  is that messages without their ancestors *are not* what the sender intended,
-  so it doesn't even make any semantic sense to deliver them.
+Such a service must provide the interface "send ciphertext T to recipient R".
+By itself, this should not reduce data security, since we assume there is an
+attacker that already stores all ciphertext. (Metadata security is a harder
+problem that is outside of our current scope - but at least this architecture
+is no worse than existing transports.)
 
-- Even worse, when the user then sends a message of their own, any parents p we
-  set are only semantically valid to one level, because we didn't wait for
-  previous ancestors before showing p to the user. That is, a message m with
-  pre(m) only means that the sender saw pre(m) and not all of anc(m). This
-  breaks transitivity.
+This adds extra development cost in a real application: at present there are
+architectural issues with some existing asynchronous delivery or "push" systems
+that make this sort of reliability awkward; email works, but leaks significant
+mounts of metadata. However, we believe that there is demand for a general
+reliable asynchronous transport as a piece of core internet infrastructure,
+which would be useful for many other services and applications too. So, at
+least within the scope of this document, we will work with this assumption, to
+clearly divide our problem between security and asynchronous reliability.
 
-- This leaves us with no other opportunity to inform others when we *do* see
-  the messages of anc(m) - pre(m). We would need a separate mechanism for this,
-  instead of it being implicit in the fact that we sent m. This makes it more
-  costly to achieve incremental consistency.
+We may also explore quasi-reliability schemes, that avoid buffering but still
+provide strong ordering. For example, if the transport can deliver large
+packets without splitting them, then whenever the user sends a message m, we
+can "piggyback" all messages from anc(m) that are not :ref:`fully-acked
+<full-ack>` alongside m. So no-one will ever see messages out-of-order, thus
+avoiding buffering. This exists already as an ad-hoc practice in email, where
+often people leave a quoted parent in the body of their own message.
 
-Buffering can be invisible to the end-user. If they don't see this behaviour,
-then there is no "experience" degradation to complain about. This may seem a
-little facetious, but it is basically what TCP does - if higher-sequence
-packets arrive earlier than lower-sequence ones, they are buffered completely
-invisibly to higher-layer applications and to the user.
+This is not a full replacement for a reliable transport - if unacked, packets
+get larger and larger, and the ability to deliver them in one piece effectively
+becomes a reliability problem. However, it could greatly improve the buffer
+waiting period for the majority of unreliable cases, and does not require any
+complex behaviour on the part of the always-online store-and-forward server.
 
-One might argue that immediacy is more important in high-latency use cases, but
-it's not clear why merely increasing the timescale should affect that. If a
-message p takes 10 time units to arrive, what is the problem with delaying a
-causally-later message m that took 2 units to arrive, for 8 units, regardless
-of whether the time unit is seconds or hours? If 10 time units is unacceptably
-long, then *that* is the root problem, not the buffering. We can detect this
-once we see m, and request a resend of p. To save space, we won't discuss such
-mechanisms here, merely note that the possibility exists. The resend mechanisms
-we discuss in the next chapter are all implicit, but might also help.
+Other approaches forfeit reliability, and display messages immediately upon
+receipt even if received out-of-order. Such strategies necessarily break our
+strong ordering property which we consider critical, so we won't discuss them
+further here - but see :ref:`consistency-without-reliability` for a more
+detailed exploration down this path.
 
-We may think of other ways to reduce the delay. If the transport can deliver
-larger packets without splitting them, then whenever the user sends a message
-m, we can "piggyback" all messages from anc(m) that are not :ref:`fully-acked
-<full-ack>` alongside m. This ensures that no-one will miss any of anc(m) that
-they don't already have. (This exists already as an ad-hoc practice in email,
-where often people leave a quoted parent in the body of their own message.)
+The importance of strong ordering
+=================================
 
-Yet another option is to allow users to see when the delivery buffer is
-non-empty, so that they at least expect to see more messages in the future.
-It's unclear if this would be actually useful or just frustrating. We should
-probably not display the *contents* of the messages in the buffer; since the
-user is likely to ignore any warnings and refer to these contents in any
-subsequent messages they send, breaking our semantics.
+It is common for messages to depend on context for their precise meaning, in
+both natural and computer languages; delivering such messages out-of-order is
+not even *semantically correct*. We conjecture that these context-dependent
+messages are a majority, based on briefly scanning our own mailboxes and thread
+histories. One might argue that humans are pretty good at reconstructing the
+order ourselves, but this places an extra burden on the user.
+
+Some have argued that strong ordering is not important for asynchronous and/or
+high-latency use cases, and therefore buffering is not worth the supposed UX
+cost. But receiving messages out-of-order is *itself a UX cost*. Futher, strong
+ordering may not be important in some cases, but this is definitely not always
+true - we can imagine scenarios where critical meetings might take place over
+several days, where integrity is more important than timeliness. Therefore, we
+think it's prudent to prioritise achieving strong security then try to optimise
+the UX around this, rather than vice-versa.
+
+Generally, even asynchronous transports are mostly reliable - otherwise they
+would have no users. Now, let's consider this minority case where out-of-order
+delivery might actually occur. Suppose Alice sends message (1) then (2), and
+Bob's machine receives (2) after time *t*. The only case where Bob would prefer
+to be shown (2) before/without (1) being available, is if (2) does not require
+(1) to be understood correctly. As previously conjectured, we assume this is a
+minority (of an outer minority). Then, we have the following cases:
+
+a. Bob receives (1) after a further time *t'* < *t*.
+b. Bob receives (1) after a further time *t'* > *t*.
+c. Bob doesn't receive (1) at all, after some timeout *T*.
+
+We argue that most users won't notice (a), that (b) and (c) are more problems
+of the transport that incentivises users towards better transports regardless
+of whether buffering is done, and that (c) can further be effectively handled
+under our system via timeouts and by restarting the session, such as described
+in :ref:`hci-ordering`.
+
+One might argue that scenarios where strong ordering is security-critical is
+also a minority, but we feel it's better to achieve this much-needed security
+for this minority, than to achieve slightly more convenience for another
+less-needy minority.
