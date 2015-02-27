@@ -74,22 +74,27 @@ see next section.
 References must be globally consistent and immutable - i.e. to see a reference
 allows one to verify the message contents, and no-one can forge a different
 message for which the reference is valid, not even the original sender. One
-implementation option, is to broadcast the same authenticated-encrypted blob to
-everyone, treat this blob as the content of the message, and use a hash of the
-message as the reference. (Those familiar with Git will see the similarities
-with their model of immutable commit objects.) [#Next]_
+simple implementation option is use a hash of the ciphertext as the reference.
+(Those familiar with Git will see the similarities with their model of
+immutable commit objects.) :ref:`encoding-message-identifiers` explores this
+and alternatives in more detail.
 
 There are two ways to know a valid reference - deriving it from the message
-contents, or seeing it elsewhere (e.g. in pre(m) of a child). In the latter
-case, one might not have seen the message itself. Then, one could pretend that
-one *has* seen it, by re-using the reference in an outgoing message. We assume
-that people won't do this - there is no strategic benefit to claiming that you
-know something that you are entitled to know but temporarily don't, and the
-rest of the system is designed to ensure that you see it eventually. The worse
-that can happen is that someone will issue a challenge you cannot answer, but
-only your reputation suffers in this case. Also, if you haven't seen the
-message, you are unable to verify that the reference is indeed valid, so
-someone else might be trying to trick *you*.
+contents, or seeing it elsewhere (e.g. in pre(m) of a child) *without having
+seen* the message itself. That is, a member could make a false declaration that
+they've seen a real message, if they see someone else refer to it - and no-one
+can detect whether this declaration is false or true. (Note that this is a
+distinct case from falsely declaring that one has seen a fake i.e non-existent
+message, which *can* be detected as described further below.)
+
+We assume that people won't do this - there is no strategic benefit in claiming
+to know something that you are entitled to know but temporarily don't. The
+worst that may happen is that someone issues a challenge you cannot answer, but
+only your reputation would suffer. Also, if you haven't seen the message, you
+are unable to verify that the reference is indeed valid, so someone else might
+be trying to trick *you*. However, if this security assessment turns out to be
+wrong, there are :ref:`measures <author-specific-message-identifiers>` we can
+take to close this hole, but they are more complex so we ignore them for now.
 
 .. _Partial ordering: https://en.wikipedia.org/wiki/Partially_ordered_set
 .. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
@@ -108,13 +113,6 @@ someone else might be trying to trick *you*.
     makes most formal descriptions shorter. Unless otherwise specified, we'll
     use *before* for |le| and *strictly before* for <, and likewise for *after*
     and |ge|.
-
-.. [#Next] Possible extensions to this are discussed in the appendix. For
-    example, we could instead hash(blob||decrypted-verified plaintext), using
-    some definition for the plaintext that is the same for everyone. This
-    ensures that only people who can read the plaintext can create a valid
-    reference, but it's not clear whether this is such a big deal. TODO: move
-    to appendix and discuss further.
 
 Causal orders
 -------------
