@@ -8,35 +8,40 @@ A "context rebinding" attack presents a message with a different context, which
 means recipients will interpret it differently from what the author intended.
 We must guarantee not only a message's contents, but its context as well.
 
-We work under the premise that members should be able to send messages without
-requiring approval from other parties. The basic distributed case is where two
-members each publish a message with the same context o, call them a, b, without
-having seen the other message first. Interpreting these messages within a total
-(linear) order, WLOG say (a, b), would change the context of b, adding a into
-it. So a total order cannot preserve context, under the no-approval premise.
+One nice property is that members should be able to send messages without
+requiring approval from other parties, or equivalently, potentially having
+messages rejected by others. Another nice property is to have a total (linear)
+order for our messages that is globally consistent. However, this is impossible
+if we want to preserve context and also retain the no-approval/no-rejection
+premise. Proof: the basic distributed case is where two members each publish a
+message with the same context O, call these a, b, without having seen the other
+message first. Forcing these into a total order, WLOG say (O, a, b), would add
+a to the apparent context of b, potentially causing it to be interpreted
+incorrectly. Note that this holds regardless of how the total order is formed -
+including e.g. by reflecting all messages via a server or leader - as long as
+we don't require approvals or allow rejections.
 
-If we abandon the no-approval premise, and use a consensus algorithm to approve
-messages, then we achieve a total order. However, this requires interaction
-with other members of the session *for every single message*; this makes it
-extremely difficult to work in an asynchronous scenario. Rejections must be
-handled manually - automatic retries are effectively a context rebinding attack
-upon yourself - we believe this is not a reasonable user experience. Finally,
-the guarantees of consensus algorithms are much lower than the computational
-security guarantees on context in our system. Therefore, we will not discuss
-these further, but other projects are welcome to do so.
+If we abandon the no-approval premise, then we can achieve a context-preserving
+total order, by using a consensus mechanism to approve one message at a time in
+sequence. However, this has several downsides. It requires interaction with
+other members of the session *for every single message*, which is not feasible
+in an asynchronous scenario. Rejections must be handled manually (automatic
+retries are effectively a context rebinding attack upon yourself [#Narej]) but
+we consider this an unacceptable user experience. Finally, the guarantees of
+consensus algorithms are much lower than the computational security guarantees
+on context in our system.
 
-(In other words, if we don't use a consensus mechanism for approving/rejecting
-messages, then the underlying history graph is a partial order - *even if* we
-have a server or leader to linearise events.)
+So, we retain the no-approval premise and a partial order to represent the true
+underlying history. We explore how to execute session mechanics and achieve
+security properties using this structure. We ignore approaches based on
+consensus algorithms. However, total orders are easier for users to interpret,
+so we do explore linearisations of the partial order, but only for user
+interface purposes and not to reason about the relative ordering of messages.
 
-From these initial considerations, we choose a causal order for representing
-the relationships between messages, with a secondary total order with weaker
-guarantees used only for user interface purposes. We explore how to execute
-session mechanics and achieve security properties using this structure. As will
-be discussed, some of these strategies may be viewed as performance penalties,
-such as temporarily preventing certain messages from being shown; applications
-that can accept weaker ordering guarantees, such as streaming non-sensitive
-video, may prefer to avoid this and choose a different scheme.
+As will be discussed, some of the sub-strategies may be viewed as performance
+penalties, such as temporarily preventing certain messages from being shown;
+applications that can accept weaker ordering guarantees, such as streaming
+non-sensitive video, may prefer to avoid this and choose a different scheme.
 
 Some key-rotation ratchets implicitly preserve context, since the dependencies
 of which previous keys are used to protect each message matches the actual
@@ -49,6 +54,11 @@ we derive a merge algorithm over causal orders that satisfies intuitive notions
 of quasi-global consistency. Our analysis includes conditions on how to encode
 a global state to be compatible with this algorithm, which may be useful for
 policy-enforced membership operations.
+
+.. [#Narej] Say we try to send a message m with context O and it is rejected.
+    This means some other message m' was accepted also with context O. If we
+    automatically retry m now, it will have m' in its context, even though the
+    author of m originally wrote it without such a context.
 
 Subtopics:
 
