@@ -22,21 +22,21 @@ including e.g. by reflecting all messages via a server or leader - as long as
 we don't require approvals or allow rejections.
 
 If we abandon the no-approval premise, then we can achieve a context-preserving
-total order, by using a consensus mechanism to approve one message at a time in
-sequence. However, this has several downsides. It requires interaction with
-other members of the session *for every single message*, which is not feasible
-in an asynchronous scenario. Rejections must be handled manually (automatic
-retries are effectively a context rebinding attack upon yourself [#Narej]) but
-we consider this an unacceptable user experience. Finally, the guarantees of
-consensus algorithms are much lower than the computational security guarantees
-on context in our system.
+total order, by using some mechanism (e.g. a consensus protocol) to approve one
+message at a time in sequence. However, this has several downsides. It requires
+interaction with other members of the session *for every single message*, which
+is not feasible in an asynchronous scenario. Rejections must be handled
+manually - automatic retries are effectively a context rebinding attack upon
+yourself [#Narej] - but we consider this an unacceptable user experience.
+Finally, the guarantees of consensus algorithms are much lower than the
+computational security guarantees on context in our system.
 
-So, we retain the no-approval premise and a partial order to represent the true
+So, we retain the no-approval premise and a causal order to represent the true
 underlying history. We explore how to execute session mechanics and achieve
-security properties using this structure. We ignore approaches based on
-consensus algorithms. However, total orders are easier for users to interpret,
-so we do explore linearisations of the partial order, but only for user
-interface purposes and not to reason about the relative ordering of messages.
+security properties using this structure. We ignore approaches that try to make
+everyone agree on a total order. However, we do explore linearisations of the
+causal order, but only for user interface purposes and not to reason about the
+relative ordering of messages.
 
 As will be discussed, some of the sub-strategies may be viewed as performance
 penalties, such as temporarily preventing certain messages from being shown;
