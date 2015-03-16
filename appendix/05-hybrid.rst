@@ -39,7 +39,7 @@ we'll just refer to these as "packet".
 We assume that packets are unique, so that our hash-defined packet ids are also
 unique. The membership operation, and anything else that is "interesting", must
 satisfy this property. This should not be difficult; indeed otherwise it would
-be susceptible to a replay attack. Duplicate packets should be ignored.
+be susceptible to replay attacks. Duplicate packets should be ignored. [#Nhsh]_
 
 The CH of a packet, as calculated by a member, attests to the server order of
 all older packets up to and including it, that they received from the server.
@@ -49,7 +49,7 @@ when they send and receive it.
 
 Periodically, everyone authenticates and sends the following information:
 
-    { last pId seen: CH(pId) }
+    ( last pId seen, CH(pId) )
 
 It is important that this be authenticated; it could be done as part of a
 message in our (authenticated) causal order history graph.
@@ -69,10 +69,7 @@ When a new member is included into the session, the first (interesting) packet
 that is visible to them, should include the CH of the last packet not visible
 to them. This information does not need to be authenticated; it is only used by
 the new member to calculate its own CHs, which they use as per above to verify
-the server order consistency - which *is* authenticated.
-
-(TODO: above needs to be thought through more precisely, e.g. what if they
-join during the middle of an existing operation?)
+the server order consistency - which *is* authenticated. [#Ninc]_
 
 So, we have a verifiable server-dictated total order. This is a topological
 ordering of the underlying partial order of packets. It does *not* preserve
@@ -84,6 +81,18 @@ total order that *does* preserve context, at least for membership operations.
 .. [#Npkt] We use the term "packet" to refer to transport-level packets; the
     term "message" refers specifically to verified-decrypted messages, that
     comprise the causal order history graph.
+
+.. [#Nhsh] Our definition allows an outside observer to potentially calculate
+    pIds and CHs. This is not a problem for anything we describe, but may cause
+    a problem for applications that build on top of us. One may use a different
+    definition, but it would need to be done based on how packets are encoded,
+    which is specific to the membership operation. If it is necessary, one may
+    adapt :ref:`encoding-message-identifiers` to apply instead to this context.
+
+.. [#Ninc] Here, "included" and "visible" refer to the cryptographic / logical
+    session, not the transport channel. Packets received by the new member on
+    the transport before they join the session should not be decryptable by
+    them, and they should ignore these, until they receive a "last-CH".
 
 Context-preserving total order
 ==============================
@@ -117,40 +126,68 @@ Demonstrably, pF comes after pI, both in the server order and from the point
 of view of its sender (i.e. context-preserving). We'll now outline a scheme
 that extends this across operations, and also handles failures and aborts.
 
-To ensure that the server doesn't reorder membership operations, any pI must
-reference the pF from the previous operation (or null if it's the first). This
-information must be authenticated somehow: maybe in a future message (simpler
-to implement, but slower to run and requires timeout semantics) or as part of
-the operation's internal authentication (faster to run, but more invasive to
-implement, maybe complex).
+To ensure that the server doesn't reorder operations, any pI proposal must
+reference the pF from the previous operation (or null if it's the first). It
+should also reference the latest messages in the (partially-ordered) ongoing
+session derived from pF. This information must be authenticated within some
+timeout; we go into strategies for this further below.
 
-There may be concurrent multiple different pI packets that point to the same
-pF. The server order can "break ties" between these - for all pI that point
-to a given pF (or null), only the first one counts, and members ignore/reject
-every other such pI. (They must remain part of the server order, however.)
+There may be concurrent multiple different pI proposals that reference the same
+pF. We use the server order to "break ties" between these - for all proposals
+that point to a given pF (or null), only the first one counts, and members
+ignore/reject every other such proposal. (They must remain part of the server
+order, and in the calculation of CHs, however.)
 
 Likewise, if a membership operation is taking too long (e.g. maybe someone has
-gone offline, so it will never finish) then an existing member may choose to
-send an "abort" packet. Concurrently, someone may send a pF that completes the
-operation; or someone may issue an "fail" packet, if the operation supports
-that. Here again, the server order breaks ties.
+gone offline, so it will never finish) then an existing member may propose to
+send an "abort" packet. Concurrently, someone may propose a pF that completes
+the operation; or someone may propose a "fail", if the operation supports that.
+Here again, the server order breaks ties.
 
-So, a minimal list of "interesting" packets for which we must verify server
-order for (see previous section) are:
+If the membership operation supports outsider initiation (i.e. *join* as well
+as *invite*), it should be the reply packet that is treated as the pI within
+our scheme here. This is authored by an insider who knows the CH of the last
+packet, which (as above) should be included in the reply too so the new member
+can verify the server order consistency. As previously, ties between concurrent
+reply proposals are broken by server-order.
 
-- pI: initiate
-- pF: complete (aka finish with success)
-- pF: fail (aka finish with error)
-- pF: abort
+One attack the server can execute here is to block operations "innocently". For
+example, when victim V sends a pI, the server first passes it out-of-band to a
+co-operating insider M who generates a conflicting pI. Then, it broadcasts this
+conflicting pI before the victim's, negating it within the bounds of "normal
+behaviour" as defined by our scheme. This is a problem because the attack is
+not detectable. For now however, we'll ignore it, since this power is inherent
+to the idea of a server-dictated total order. This is not ideal of course, and
+we welcome suggestions for improvements.
 
-One attack the server can execute in this position is to block operations
-"innocently". For example, when victim V sends a pI, the server first passes
-it out-of-band to a co-operating insider M who generates a conflicting pI. The
-server then broadcasts this conflicting pI before the victim's, negating it
-within the bounds of "normal behaviour" as defined by our scheme. This is a
-problem because the attack is not detectable. For now however, we'll ignore it,
-since this power is inherent to the idea of a server-dictated total order. This
-is not ideal of course, and we welcome suggestions for improvements.
+To summarise the above: a minimal list of "interesting" packets for which we
+must verify server order for (see previous section) are:
+
+- pI proposal: initiate
+- pF proposal: complete (aka finish with success)
+- pF proposal: fail (aka finish with error)
+- pF proposal: abort
+
+Every pI proposal must contain the following information:
+
+- last pId seen, CH(pId), for new members to verify server-order consistency
+- last accepted pF (or "null"), to preserve the author's context
+- latest messages seen, in the ongoing session derived from pF
+
+This information must be authenticated. If the membership operation supports
+"additional authenticated data", we can simply use this feature. Otherwise,
+perhaps such a feature can be added. Some secure real-world protocols have a
+feature that authenticates the protocol version in order to avoid downgrade
+attacks, though this is typically not private. But if protecting metadata is
+outside of the application's threat model, then this may be used.
+
+If in-operation authentication cannot be achieved, a fallback is to resend this
+information as part of a message in the newly-created authenticated session.
+Others should expect this message, abort the session if it is not received
+within some timeout, or verify it against the older unauthenticated claims if
+it is received. This keeps the membership operation component more decoupled
+from the rest of the system. However, it takes longer to achieve our desired
+security property.
 
 So, now we have a context-preserving authenticated session-global total order
 of membership operations:
@@ -163,8 +200,6 @@ of membership operations:
   | every pI is authenticated and linked to some earlier pF (or "null")
 - | by the server order,
   | every pI is unique for the pF it is linked to - others are rejected
-
-(TODO: link these with the message partial order graph)
 
 .. [#Ncon] Or rather, they *will have* confidence, since consistency checks
     inherently must occur *after* the packet has been received and processed by
