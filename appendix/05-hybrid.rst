@@ -12,6 +12,9 @@ while leaving messages to be in a causal order. As :doc:`discussed earlier
 synchronous application, such as instant messaging. But the concepts involved
 are less advanced, so more straightforward to implement with current tools.
 
+(TODO: actually ours only adds a round trip in the worst case, so maybe even OK
+for high-latency applications, assuming a low-round GKA.)
+
 Consistent server order
 =======================
 
@@ -27,14 +30,18 @@ verify this property. For each member, as they receive interesting packets from
 the server, they calculate a "chain hash" (CH) for it:
 
     | pId = H(packet) \
-    | CH(pId) = H(CH(previous pId or "") || pId)
+    | CH(pId) = H(CH(previous pId or "") || pId || pId-type)
 
 By "interesting", we mean packets that we care about verifying the consistency
 of the server order of. We can ignore other packets, such as message packets
 (which are already authenticated and consistent via other mechanisms described
-earlier) and junk or resent packets. "Interesting" will be defined in more
-detail later, but includes at least "initiate operation" packets. From here on,
-we'll just refer to these as "packet".
+earlier), rejected packets, and junk or resent packets. "Interesting" will be
+defined in more detail later. (It should be clear from context whether we are
+talking about packets or only "interesting" packets.)
+
+pId-type is an optional piece of information, if we want to also check that
+everyone interprets the packet in the same way, in case this might be ambiguous
+depending on local state, environment, etc.
 
 We assume that packets are unique, so that our hash-defined packet ids are also
 unique. The membership operation, and anything else that is "interesting", must
@@ -65,12 +72,6 @@ If the CH values don't match, we abort. If any "last pId acked" value does not
 match our own "last pId seen" value after some timeout, we emit a "not
 fully-acked" warning to the user.
 
-When a new member is included into the session, the first (interesting) packet
-that is visible to them, should include the CH of the last packet not visible
-to them. This information does not need to be authenticated; it is only used by
-the new member to calculate its own CHs, which they use as per above to verify
-the server order consistency - which *is* authenticated. [#Ninc]_
-
 So, we have a verifiable server-dictated total order. This is a topological
 ordering of the underlying partial order of packets. It does *not* preserve
 context - when we send a packet out, we have some context, but the server may
@@ -88,11 +89,6 @@ total order that *does* preserve context, at least for membership operations.
     definition, but it would need to be done based on how packets are encoded,
     which is specific to the membership operation. If it is necessary, one may
     adapt :ref:`encoding-message-identifiers` to apply instead to this context.
-
-.. [#Ninc] Here, "included" and "visible" refer to the cryptographic / logical
-    session, not the transport channel. Packets received by the new member on
-    the transport before they join the session should not be decryptable by
-    them, and they should ignore these, until they receive a "last-CH".
 
 Context-preserving total order
 ==============================
@@ -135,8 +131,7 @@ timeout; we go into strategies for this further below.
 There may be concurrent multiple different pI proposals that reference the same
 pF. We use the server order to "break ties" between these - for all proposals
 that point to a given pF (or null), only the first one counts, and members
-ignore/reject every other such proposal. (They must remain part of the server
-order, and in the calculation of CHs, however.)
+ignore/reject every other such proposal.
 
 Likewise, if a membership operation is taking too long (e.g. maybe someone has
 gone offline, so it will never finish) then an existing member may propose to
@@ -160,18 +155,24 @@ not detectable. For now however, we'll ignore it, since this power is inherent
 to the idea of a server-dictated total order. This is not ideal of course, and
 we welcome suggestions for improvements.
 
-To summarise the above: a minimal list of "interesting" packets for which we
-must verify server order for (see previous section) are:
+Note that this scheme also works in the degenerate case of a 1-packet operation
+(e.g. with a key dictator) - in this case, a packet may be both a pI proposal
+and a pF that is accepted immediately. Implementors should check for this case
+if appropriate, by immediately trying to decode a pI packet as a pF packet if
+the former is accepted.
 
-- pI proposal: initiate
-- pF proposal: complete (aka finish with success)
-- pF proposal: fail (aka finish with error)
-- pF proposal: abort
+So, in this context, "interesting" packets for which we must verify server
+order for (see previous section) are accepted pI and pF proposals. As for the
+pId-type we mentioned as a way to also commit the "interpretation" of packets
+into the chain hash consistency check, we'll use "1" for pI, "2" for pF, and
+"3" for pI+pF packets. We don't include rejected packets in this definition,
+because they are redundant; and actually this makes things easier later when we
+run into partial visibility issues.
 
 Every pI proposal must contain the following information:
 
-- last pId seen, CH(pId), for new members to verify server-order consistency
 - last accepted pF (or "null"), to preserve the author's context
+- CH(pF), for new members to verify server-order consistency
 - latest messages seen, in the ongoing session derived from pF
 
 This information must be authenticated. If the membership operation supports
@@ -207,3 +208,103 @@ of membership operations:
 
 .. [#Nack] Note the similarity in reasoning on why :ref:`we must ack messages
     ourselves <full-ack>`.
+
+Corner cases caused by partial visibility
+=========================================
+
+Partial visibility causes some corner cases here too. To start off with, we'll
+clarify some of our assumptions on the membership operation and visibility.
+
+We require that all pI proposals must be identifiable by all channel members,
+even those not part of the cryptographic session. We feel this is necessary,
+the alternatives seem much more complex:
+
+- If they are only identifiable by current session members, then new members
+  cannot be part of the acceptance process and must be told explictly which one
+  was accepted. This requires further packets, but the operation may complete
+  (or even have further operations accepted) concurrently in the meantime.
+
+- If they are only identifiable by current members and the specific new members
+  they are including, then different proposals on top of the same prev_pF would
+  be visible to different members. Then, we also require further packets to
+  reach an agreement on what was accepted.
+
+The server has this metadata anyway. If members require session membership
+changes to be private, we will need to achieve this some other way, i.e. not
+using a hybrid ordering on top of a server transport.
+
+However, we do assume that we may not be able to identify all pF proposals for
+operations not involving us. Even if failure proposals are visible, success
+proposals may not be, since these could depend on the cryptographic state of
+the group. This means we may have uncertainty about which pF proposal was
+accepted. This causes some more complexity, but is easier to work with.
+
+The scheme described in the previous section lets members agree on which pI
+proposal to accept, if they know the full server order from its prev_pF up to
+it. However, this is not the case for new members that entered a channel after
+the prev_pF - they don't know if other proposals were sent before they entered.
+
+So, we must extend the scheme slightly. pI proposals that include new members,
+must be issued after these new members are already in the channel. As above, it
+must reference a prev_pF and the CH corresponding to this. To ensure that new
+members who have not seen prev_pF can distinguish these from ones sent before
+they joined, it should explicitly reference their uIds, but *only if*:
+
+- at the time of sending, the sender has seen the server add these members, and
+- there were no other pI proposals between the prev_pF, and the latest channel
+  event that these members. Such a proposal would have been already accepted,
+  so the sender can simply test locally that there is no ongoing operation.
+
+If this condition cannot be satisfied, then the sender should wait until the
+current operation is over, before trying to issue the pI proposal again - this
+time with a different prev_pF to apply the above conditions to. As with other
+metadata associated with pI proposals, this should eventually be authenticated.
+
+From new members' point of view, we assume that the first pI proposal we see
+that mentions both our uId and a new prev_pF we haven't seen referenced by an
+older proposal, is accepted by the server-order. This may not be true, but then
+the server-order consistency check would fail later.
+
+If we see a pI proposal that doesn't mention our uId, we ignore it. We must
+then also ignore subsequent pI proposals pointing to the same prev_pF *even if
+they mention us*, since these are clearly rejected by the server-order. Later,
+we expect to receive a pI that points to a prev_pF that we *can* see. Since we
+may not be able to identify pF proposals, we must calculate and store pIds for
+*every single packet* until we see a pI that is visible to us, to be able to
+check whether its prev_pF was seen by us or not. This is a bit awkward, but is
+not a significant cost; suggestions for improvements welcome.
+
+From old members' point of view, we accept or reject this pI as normal. It is
+safe to ignore checking the uId claims, since if they are incorrect then the
+server-order consistency check would fail later.
+
+In fact, there are lots of failure modes here, with members potentially lying
+about which members they saw join, what their prev_pF is, etc. Rather than
+trying to enumerate and handle them all, we just depend on our server-order
+consistency mechanism, and issue an error after a timeout if this isn't
+reached. This is why adding only accepted packets into our CH is better than
+also adding rejected packets too - the CH also "commits" to which packets we
+accepted. If we also added rejected packets here, we could have some failure
+modes where members accepted different proposals yet still have the same CH.
+
+To clarify, what this scheme does is to allow the protocol to work succesfully
+under *innocent* race conditions caused by asynchronity and partial visibility.
+Attacks cause failures in the server-order consistency checks, or others.
+
+There are a few other corner cases:
+
+When we send a pI proposal, even if at this the new members are in the channel,
+some of them may leave the channel before our proposal is echoed back. If this
+happens, i.e. if any pI proposal is echoed into the channel at a point when any
+of the new members are not in the channel, then this proposal is rejected, even
+if it would otherwise be accepted. The membership of the channel should be
+obvious to everyone in the channel, assuming the server echoes back events in
+the same order.
+
+When we are being excluded but this fails, we should be able to remain in both
+the channel and session, and stay consistent with everyone. (If it succeeds
+then we'll get kicked and know to close the session.) But by our assumptions,
+we may not be able to identify which pF proposal was accepted. Therefore,
+someone needs to tell us this explicitly after it's decided. Again, they could
+lie to us, but server-order consistency checks would fail.
+
