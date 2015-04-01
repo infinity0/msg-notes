@@ -59,18 +59,9 @@ Periodically, everyone authenticates and sends the following information:
     ( last pId seen, CH(pId) )
 
 It is important that this be authenticated; it could be done as part of a
-message in our (authenticated) causal order history graph.
-
-Then, we may verify consistency by doing something similar to the mechanism
-described in :doc:`../causal/02-consistency`, though the book-keeping data
-structures can be simpler. That is, instead of keeping a "not yet acked" set of
-members for every packet, we keep a "last pId acked" value for every other
-member. When we receive the above information from someone, we check their CH
-against ours, and if it's correct we update the "last pId acked" value we have
-stored for them (perhaps checking that it's not older than the previous value).
-If the CH values don't match, we abort. If any "last pId acked" value does not
-match our own "last pId seen" value after some timeout, we emit a "not
-fully-acked" warning to the user.
+message in our (authenticated) causal order history graph. Then, we may verify
+consistency by doing something similar to the mechanism described in
+:doc:`../causal/02-consistency`.
 
 So, we have a verifiable server-dictated total order. This is a topological
 ordering of the underlying partial order of packets. It does *not* preserve
