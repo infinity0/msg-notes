@@ -6,28 +6,26 @@ Causal orders have some nice properties explained elsewhere, but are also hard
 to implement correctly when not everyone is allowed to see the full history.
 (At the time of writing, we don't have a full solution for this yet.)
 
-One alternative option is to have a total order for membership operations,
-while leaving messages to be in a causal order. As :doc:`discussed earlier
-<../causal/index>`, a total order is probably only viable in a low-latency
-synchronous application, such as instant messaging. But the concepts involved
-are less advanced, so more straightforward to implement with current tools.
-
-(TODO: actually ours only adds a round trip in the worst case, so maybe even OK
-for high-latency applications, assuming a low-round GKA.)
+One alternative is to have a total order for membership operations, while
+leaving messages to be in a causal order. Here, we present a scheme for this
+that requires no extra client packets, but does require one extra round of
+latency - the minimum necessary for a total order that preserves context. Note
+however that this is strictly necessary only for the membership operations - so
+perhaps an intelligent application can use it even for asynchronous messaging
+during periods of static membership.
 
 Consistent server order
 =======================
 
-We propose one fairly simple way of achieving this, that requires a server.
-This is quite standard for existing instant messaging protocols such as XMPP,
-and requires no extra functionality on the server side. Therefore, clients can
-transparently run this scheme on top of existing infrastructure.
+We expect a server that receives all packets [#Npkt]_ from all clients, and
+echoes them back to everyone in the same total order. This is quite standard
+for existing instant messaging protocols such as XMPP, and requires no extra
+logic on the server side. Therefore, clients can transparently run this scheme
+on top of existing infrastructure.
 
-We expect that the server echoes back packets to all clients in the same total
-order, which is the case for the aforementioned existing protocols. [#Npkt]_ We
-do not assume that the server is honest: we outline a scheme where clients can
-verify this property. For each member, as they receive interesting packets from
-the server, they calculate a "chain hash" (CH) for it:
+We do not assume that the server is honest: we outline a scheme where clients
+can verify this property. For each member, as they receive interesting packets
+from the server, they calculate a "chain hash" (CH) for it:
 
     | pId = H(packet) \
     | CH(pId) = H(CH(previous pId or "") || pId || pId-type)
@@ -114,15 +112,15 @@ of view of its sender (i.e. context-preserving). We'll now outline a scheme
 that extends this across operations, and also handles failures and aborts.
 
 To ensure that the server doesn't reorder operations, any pI proposal must
-reference the pF from the previous operation (or null if it's the first). It
-should also reference the latest messages in the (partially-ordered) ongoing
-session derived from pF. This information must be authenticated within some
-timeout; we go into strategies for this further below.
+reference the pF from the previous operation (the next section deals with the
+case if there was no previous). It should also reference the latest messages in
+the (partially-ordered) ongoing session derived from pF. This information must
+be authenticated eventually; we go into strategies for this further below.
 
 There may be concurrent multiple different pI proposals that reference the same
 pF. We use the server order to "break ties" between these - for all proposals
-that point to a given pF (or null), only the first one counts, and members
-ignore/reject every other such proposal.
+that point to a given pF, only the first one counts, and members ignore/reject
+every other such proposal.
 
 Likewise, if a membership operation is taking too long (e.g. maybe someone has
 gone offline, so it will never finish) then an existing member may propose to
@@ -162,24 +160,25 @@ run into partial visibility issues.
 
 Every pI proposal must contain the following information:
 
-- last accepted pF (or "null"), to preserve the author's context
+- last accepted pF, to preserve the author's context
 - CH(pF), for new members to verify server-order consistency
 - latest messages seen, in the ongoing session derived from pF
 
 This information must be authenticated. If the membership operation supports
 "additional authenticated data", we can simply use this feature. Otherwise,
-perhaps such a feature can be added. Some secure real-world protocols have a
-feature that authenticates the protocol version in order to avoid downgrade
-attacks, though this is typically not private. But if protecting metadata is
-outside of the application's threat model, then this may be used.
+perhaps such a feature can be added. For example, some existing protocols
+retroactively authenticate the protocol version to prevent downgrade attacks;
+the same mechanism could be adapted to authenticate arbitrary data. Typically
+this is not private; but as argued below, neither does the scheme we present
+here try to protect the privacy of group membership changes.
 
-If in-operation authentication cannot be achieved, a fallback is to resend this
-information as part of a message in the newly-created authenticated session.
-Others should expect this message, abort the session if it is not received
-within some timeout, or verify it against the older unauthenticated claims if
-it is received. This keeps the membership operation component more decoupled
-from the rest of the system. However, it takes longer to achieve our desired
-security property.
+If it is not feasible to achieve in-operation authentication, a fallback is to
+resend this information as part of a message in the newly-created authenticated
+session. Others should expect this message, abort the session if it is not
+received within some timeout, or verify it against the older unauthenticated
+claims if it is received. This keeps the membership operation component more
+decoupled from the rest of the system. However, it would take longer to achieve
+our desired security property.
 
 So, now we have a context-preserving authenticated session-global total order
 of membership operations:
@@ -189,7 +188,7 @@ of membership operations:
 - | by the server order,
   | every pF is unique for the pI it is linked to - others are rejected
 - | by our requirements of implementations of our scheme,
-  | every pI is authenticated and linked to some earlier pF (or "null")
+  | every pI is authenticated and linked to some earlier pF
 - | by the server order,
   | every pI is unique for the pF it is linked to - others are rejected
 
@@ -229,6 +228,9 @@ operations not involving us. Even if failure proposals are visible, success
 proposals may not be, since these could depend on the cryptographic state of
 the group. This means we may have uncertainty about which pF proposal was
 accepted. This causes some more complexity, but is easier to work with.
+
+Entering a channel
+------------------
 
 The scheme described in the previous section lets members agree on which pI
 proposal to accept, if they know the full server order from its prev_pF up to
@@ -282,15 +284,24 @@ To clarify, what this scheme does is to allow the protocol to work succesfully
 under *innocent* race conditions caused by asynchronity and partial visibility.
 Attacks cause failures in the server-order consistency checks, or others.
 
-There are a few other corner cases:
+TODO: iron out the case of what to do when joining a new channel with no
+existing session. Roughly along the lines of, locally generate random prev_pF.
 
-When we send a pI proposal, even if at this the new members are in the channel,
-some of them may leave the channel before our proposal is echoed back. If this
-happens, i.e. if any pI proposal is echoed into the channel at a point when any
-of the new members are not in the channel, then this proposal is rejected, even
-if it would otherwise be accepted. The membership of the channel should be
-obvious to everyone in the channel, assuming the server echoes back events in
-the same order.
+Members leave during proposal echo delay
+----------------------------------------
+
+When we send a pI proposal, even if at this time the new members are in the
+channel, we may see them leave the channel before our proposal is echoed back.
+If this happens, i.e. if any pI proposal is echoed into the channel at a point
+when any of the new members are not in the channel, then this proposal is
+rejected, even if it would otherwise be accepted. The membership of the channel
+should be obvious to everyone in the channel, assuming the server echoes back
+events in the same order.
+
+This applies to both pI and pF proposals.
+
+Failure of others to exclude self
+---------------------------------
 
 When we are being excluded but this fails, we should be able to remain in both
 the channel and session, and stay consistent with everyone. (If it succeeds
@@ -299,3 +310,6 @@ we may not be able to identify which pF proposal was accepted. Therefore,
 someone needs to tell us this explicitly after it's decided. Again, they could
 lie to us, but server-order consistency checks would fail.
 
+TODO: consider the alternative of just assuming the operation failed, unless
+someone explicitly kicks us out of the channel - which we should already treat
+as an trigger to part the session locally.
