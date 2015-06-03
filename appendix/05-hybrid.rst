@@ -260,12 +260,12 @@ the server-order consistency check would fail later.
 
 If we see a pI proposal that doesn't mention our uId, we ignore it. We must
 then also ignore subsequent pI proposals pointing to the same prev_pF *even if
-they mention us*, since these are clearly rejected by the server-order. Later,
-we expect to receive a pI that points to a prev_pF that we *can* see. Since we
-may not be able to identify pF proposals, we must calculate and store pIds for
-*every single packet* until we see a pI that is visible to us, to be able to
-check whether its prev_pF was seen by us or not. This is a bit awkward, but is
-not a significant cost; suggestions for improvements welcome.
+they mention us*, since (by virtue of the earlier pI) these are rejected by the
+server-order. Later, we expect to receive a pI that points to a prev_pF that we
+*can* see. Since we may not be able to identify pF proposals, we must calculate
+and store pIds for *every single packet* until we see a pI that mentions us, to
+be able to check whether its prev_pF was seen by us or not. This is awkward,
+but is not a significant cost; suggestions for improvements welcome.
 
 From old members' point of view, we accept or reject this pI as normal. It is
 safe to ignore checking the uId claims, since if they are incorrect then the
@@ -278,7 +278,7 @@ consistency mechanism, and issue an error after a timeout if this isn't
 reached. This is why adding only accepted packets into our CH is better than
 also adding rejected packets too - the CH also "commits" to which packets we
 accepted. If we also added rejected packets here, we could have some failure
-modes where members accepted different proposals yet still have the same CH.
+modes where members accepted the same proposals yet have different CH values.
 
 To clarify, what this scheme does is to allow the protocol to work succesfully
 under *innocent* race conditions caused by asynchronity and partial visibility.
