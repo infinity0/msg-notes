@@ -17,17 +17,17 @@ during periods of static membership.
 Consistent server order
 =======================
 
-We expect a server that receives all packets [#Npkt]_ from all clients, and
-echoes them back to everyone in the same total order. This is quite standard
-for existing instant messaging protocols such as XMPP, and requires no extra
-logic on the server side. Therefore, clients can transparently run this scheme
-on top of existing infrastructure.
+We expect a server that receives all packets [#Npkt]_ (join, part, message)
+from all clients, and echoes them back reliably to everyone in the same total
+order. This is quite standard for existing instant messaging protocols such as
+XMPP, and requires no extra logic on the server side. Therefore, clients can
+transparently run this scheme on top of existing infrastructure.
 
-We do not assume that the server is honest: we outline a scheme where clients
-can verify this property. For each member, as they receive interesting packets
-from the server, they calculate a "chain hash" (CH) for it:
+We do not assume that the server is honest or competent about this: we outline
+a scheme where clients can verify this property. Every member, as they receive
+interesting packets from the server, they calculate a "chain hash" (CH) for it:
 
-    | pId = H(packet) \
+    | pId = H(packet data||sender||recipients) \
     | CH(pId) = H(CH(previous pId or "") || pId || pId-type)
 
 By "interesting", we mean packets that we care about verifying the consistency
@@ -36,6 +36,11 @@ of the server order of. We can ignore other packets, such as message packets
 earlier), rejected packets, and junk or resent packets. "Interesting" will be
 defined in more detail later. (It should be clear from context whether we are
 talking about packets or only "interesting" packets.)
+
+We include the (unauthenticated) author and recipients in the hash, which means
+that our consistency checks also commit to the consistency of this metadata at
+those packets. This is important, because our logic about which packets to
+accept/reject also depends on this information (as described later).
 
 pId-type is an optional piece of information, if we want to also check that
 everyone interprets the packet in the same way, in case this might be ambiguous
@@ -205,9 +210,9 @@ Corner cases caused by partial visibility
 Partial visibility causes some corner cases here too. To start off with, we'll
 clarify some of our assumptions on the membership operation and visibility.
 
-We require that all pI proposals must be identifiable by all channel members,
-even those not part of the cryptographic session. We feel this is necessary,
-the alternatives seem much more complex:
+We require that all pI proposals must be identifiable and decodable by all
+channel members, even those not part of the cryptographic session. We feel this
+is necessary; the alternatives seem much more complex:
 
 - If they are only identifiable by current session members, then new members
   cannot be part of the acceptance process and must be told explictly which one
@@ -229,87 +234,123 @@ proposals may not be, since these could depend on the cryptographic state of
 the group. This means we may have uncertainty about which pF proposal was
 accepted. This causes some more complexity, but is easier to work with.
 
-Entering a channel
-------------------
+Leaving a channel
+-----------------
 
-The scheme described in the previous section lets members agree on which pI
-proposal to accept, if they know the full server order from its prev_pF up to
-it. However, this is not the case for new members that entered a channel after
-the prev_pF - they don't know if other proposals were sent before they entered.
+If we leave a channel for whatever reason, we can no longer be sure that we
+didn't miss any packets. Therefore, we should clear all state to do with the
+session. (This is simpler to reason about than trying some complicated recovery
+logic, especially in terms general to *any* membership operation.) Given this,
+we add another rule:
 
-So, we must extend the scheme slightly. pI proposals that include new members,
-must be issued after these new members are already in the channel. As above, it
-must reference a prev_pF and the CH corresponding to this. To ensure that new
-members who have not seen prev_pF can distinguish these from ones sent before
-they joined, it should explicitly reference their uIds, but *only if*:
+- (rule XO) if any member leaves during an operation that involves including or
+  keeping them in the session, then this is interpreted as a pseudo pF packet
+  which is immediately accepted as a *failure* of the operation - since we know
+  that the leaving member is unable to complete it, having cleared all state.
 
-- at the time of sending, the sender has seen the server add these members, and
-- there were no other pI proposals between the prev_pF, and the latest channel
-  event that these members. Such a proposal would have been already accepted,
-  so the sender can simply test locally that there is no ongoing operation.
+The pId of this pseudo-packet is defined as:
 
-If this condition cannot be satisfied, then the sender should wait until the
-current operation is over, before trying to issue the pI proposal again - this
-time with a different prev_pF to apply the above conditions to. As with other
-metadata associated with pI proposals, this should eventually be authenticated.
+    | pId = H(prev_pI||"leave"||remaining channel members)
 
-From new members' point of view, we assume that the first pI proposal we see
-that mentions both our uId and a new prev_pF we haven't seen referenced by an
-older proposal, is accepted by the server-order. This may not be true, but then
-the server-order consistency check would fail later.
-
-If we see a pI proposal that doesn't mention our uId, we ignore it. We must
-then also ignore subsequent pI proposals pointing to the same prev_pF *even if
-they mention us*, since (by virtue of the earlier pI) these are rejected by the
-server-order. Later, we expect to receive a pI that points to a prev_pF that we
-*can* see. Since we may not be able to identify pF proposals, we must calculate
-and store pIds for *every single packet* until we see a pI that mentions us, to
-be able to check whether its prev_pF was seen by us or not. This is awkward,
-but is not a significant cost; suggestions for improvements welcome.
-
-From old members' point of view, we accept or reject this pI as normal. It is
-safe to ignore checking the uId claims, since if they are incorrect then the
-server-order consistency check would fail later.
-
-In fact, there are lots of failure modes here, with members potentially lying
-about which members they saw join, what their prev_pF is, etc. Rather than
-trying to enumerate and handle them all, we just depend on our server-order
-consistency mechanism, and issue an error after a timeout if this isn't
-reached. This is why adding only accepted packets into our CH is better than
-also adding rejected packets too - the CH also "commits" to which packets we
-accepted. If we also added rejected packets here, we could have some failure
-modes where members accepted the same proposals yet have different CH values.
-
-To clarify, what this scheme does is to allow the protocol to work succesfully
-under *innocent* race conditions caused by asynchronity and partial visibility.
-Attacks cause failures in the server-order consistency checks, or others.
-
-TODO: iron out the case of what to do when joining a new channel with no
-existing session. Roughly along the lines of, locally generate random prev_pF.
+TODO(xl): what if the leaving member re-enters before we exclude them?
 
 Members leave during proposal echo delay
 ----------------------------------------
 
 When we send a pI proposal, even if at this time the new members are in the
 channel, we may see them leave the channel before our proposal is echoed back.
-If this happens, i.e. if any pI proposal is echoed into the channel at a point
-when any of the new members are not in the channel, then this proposal is
-rejected, even if it would otherwise be accepted. The membership of the channel
-should be obvious to everyone in the channel, assuming the server echoes back
-events in the same order.
+So, we add an additional check:
 
-This applies to both pI and pF proposals.
+- (rule XP) if any pI proposal is received back from the server at a point when
+  any of its new members (i.e. the membership for the new sub-session it is
+  proposing) are not in the channel, then this proposal is rejected, even if it
+  would otherwise be accepted.
+
+- if any pF proposal is received under similar circumstances, the operation
+  should already have been failed as per the previous section - so this case
+  doesn't need explicit logic to cover
+
+The membership of the channel should be obvious to everyone in the channel,
+assuming the server echoes back membership events in the same order, which (as
+described above) is checked retroactivly.
+
+Given the above checks, it is therefore wise for proposers to make sure new
+members are in the channel *before* they send out their pI packet.
+
+Entering a channel
+------------------
+
+The scheme described so far lets members agree on which pI proposal to accept,
+if they know the full server order from its prev_pF up to it. However, this is
+not the case for new members that entered a channel after the prev_pF - they
+don't know if other proposals were sent before they entered.
+
+The next pI proposal we see, may be treated by a few cases:
+
+- It is invalidated by (rule XP). Then, we know others would ignore it, so we
+  should ignore it too. Otherwise:
+- (rule IO) It isn't trying to include us. Then, we ignore it, but assume that
+  others would either accept it, or have already accepted another packet that
+  references the same prev_pF. Either way, we store prev_pF and reject any
+  future proposals that reference it.
+- (rule II) It is trying to include us, and it's not invalidated by rule IO.
+  Then, we accept it opportunistically:
+
+  - If we have seen prev_pF, then we know this is correct.
+  - Otherwise, this could be incorrect - another proposal that references the
+    same prev_pF could have been accepted before we entered the channel. But in
+    this case, the server-order consistency check would fail later, or (if it
+    is contributive) we would not be able to complete the operation, or someone
+    would kick us because we're in the channel at an inappropriate time.
+
+There are lots of failure modes; members could lie about what their prev_pF is,
+or the server could manipulate this value, etc. Rather than trying to enumerate
+and handle them all, we just depend on our server-order consistency mechanism,
+and issue an error after a timeout if this isn't reached. This is why adding
+only accepted packets into our CH is better than also adding rejected packets
+too - the CH also "commits" to which packets we accepted. If we also added
+rejected packets here, we could have some failure modes where members accepted
+the same proposals yet have different CH values.
+
+To clarify, what this scheme does is to allow the protocol to work succesfully
+under *innocent* race conditions caused by asynchronity and partial visibility.
+This reduces the amount of false positives (in terms of failures of security
+checks), making the overall system more user friendly. As with any secure
+system, attacks cause true positive failures.
+
+TODO: iron out the case of what to do when joining a new channel with no
+existing session. Roughly along the lines of, locally generate random prev_pF.
 
 Failure of others to exclude self
 ---------------------------------
 
 When we are being excluded but this fails, we should be able to remain in both
-the channel and session, and stay consistent with everyone. (If it succeeds
-then we'll get kicked and know to close the session.) But by our assumptions,
-we may not be able to identify which pF proposal was accepted. Therefore,
-someone needs to tell us this explicitly after it's decided. Again, they could
-lie to us, but server-order consistency checks would fail.
+the channel and session, and stay consistent with everyone. By our assumptions,
+we may not be able to identify which pF proposal was accepted. However, if it
+succeeds then we'll get kicked and know to close the session and clear all
+state. So, we can opportunistically assume that the operation will fail and
+continue participating, until someone kicks us from the channel.
 
-TODO: consider the alternative of just assuming the operation failed, unless
-someone explicitly kicks us out of the channel - which we should already treat
-as an trigger to part the session locally.
+Responding to channel membership changes
+----------------------------------------
+
+When a greeting is in progress (between an accepted pI and an accepted pF):
+
+- If someone leaves, or was forced to leave:
+
+    - If they were meant to be part of the new sub-session, fail the operation (rule XO)
+    - Else, they are supposed to leave; do nothing
+
+- If someone enters, or was forced to enter:
+
+    - By (rule XP) they are not needed in the new sub-session, so kick them.
+      If the application wishes to support spontaneous requests-to-join from
+      outsiders, then perhaps notify the local user about this.
+
+Outside of a greeting:
+
+- If someone leaves, propose an operation to exclude them.
+- If someone is forced to leave, assume someone else will make such a proposal.
+- If someone enters, notify the user that they would like to join the session.
+- If someone is forced to enter, assume someone else will make such a proposal.
+
