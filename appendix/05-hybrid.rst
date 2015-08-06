@@ -533,12 +533,17 @@ Rule LOX:
   keeping them in the session, and it fails (for the latter case, this is
   inevitable due to rule LOI), then propose an operation to exclude them.
 
-When trying to exclude a member from the cryptographic session, who has already
-left the channel: if this member re-enters the channel before we exclude them
-from the session, we can just auto-kick them until we exclude them. The above
-auto-exclusion rules, together with rule XP, should ensure that we mostly don't
-get to a state where a member is in the channel and expects to be included, but
-no-one tries to do this.
+The following rules are about entering, but the reasoning behind them demands
+that we discuss them *after* the above rules about leaving:
+
+Rule EAL:
+  When trying to exclude a member from the cryptographic session, who already
+  left the channel: if this member re-enters the channel before we exclude them
+  from the session, we can just auto-kick them until we exclude them.
+
+The above auto-exclusion rules, together with rule XP, should ensure that we
+mostly don't get to a state where a member is in the channel and expects to be
+included, but no-one tries to do this.
 
 If everyone that wants to exclude them leaves the channel, then there are a few
 race conditions where they would never be kicked. [#Nrace]_ So, they should
@@ -563,7 +568,11 @@ Excluded from a session
 When we exclude someone, as per previous sections, they stay in the channel
 until they are kicked, since they can't identify a success pF. This means that
 they have state inconsistent with other members, so we can't re-include them,
-until they've left the channel and reset their state.
+until they've left the channel and reset their state. In other words:
+
+Rule IAL:
+  When someone tries to include a member into the session, who was previously
+  excluded but not yet left the channel, auto-kick them from the channel.
 
 If everyone that wants to kick them leaves (e.g. disconnected), then they would
 never be kicked. So, they should auto-leave the channel after a timeout, in
