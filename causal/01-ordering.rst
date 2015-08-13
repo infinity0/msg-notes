@@ -26,7 +26,7 @@ order, ¬ (a |le| b) does *not* imply a |ge| b.
 
 .. digraph:: relations
 
-    rankdir=BT;
+    rankdir=RL;
     node [height=0.5, width=0.5, style=filled, label=""];
     m [fillcolor="#ffffff", label="m"];
     p [fillcolor="#ff6666"];
@@ -276,8 +276,8 @@ will indicate that something is wrong, but this helps to narrow down the cause.
 
 .. [#Ndlv] Here, "deliver" is standard distributed-systems terminology, and
     means to make the message available to higher layers for subsequent
-    operations, such as displaying in a UI. However, in messaging contexts,
-    "deliver" might be confused to mean "remote completion of a send", e.g. as
+    operations, such as displaying in a UI. However, in colloquial messaging
+    contexts, "deliver" sometimes means "remote completion of a send", e.g. as
     in "delivery receipt"; so sometimes we'll use the term "accept" instead.
 
 Detecting transport attacks
@@ -292,7 +292,7 @@ Detecting replays is easy, assuming that our decryption scheme verify-decrypts
 duplicate packets so that they have the same parents (and contents and other
 metadata); then this will be deserialised into an already-existing node in our
 transcript graph. If we cache the ciphertext (and there is :ref:`reason to
-<reliability>`), we don't even need to verify-decrypt it the second time.
+<single-ciphertext>`), we don't even need to verify-decrypt it the second time.
 
 Enforcing transitivity is basically an exercise in correcting the order of
 messages, so we are already covered there.
@@ -419,3 +419,8 @@ One might argue that scenarios where strong ordering is security-critical is
 also a minority, but we feel it's better to achieve this much-needed security
 for this minority, than to achieve slightly more convenience for another
 less-needy minority.
+
+TODO: describe a hybrid scheme, using lossy ratchets to derive a "session key",
+and using this as the long-term key (instead of the real long-term key) in a
+strongly-ordered ratchet. this prevents "drop attacks" from forcing users to
+repeatedly use their long-term key for messaging material.

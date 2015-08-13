@@ -161,6 +161,13 @@ exactly which. Yes, this extra information is likely unnecessary in "most
 typical cases", but it is still good to make it accessible in a secondary
 interface, in case the user has critical needs for a particular case.
 
+As with drop detection, if we reach a good state (here, consistency) *after*
+the timeout, we should cancel the warning or at least downgrade its severity.
+Also, here the warning is associated with a message that is *already displayed*
+to the user. Therefore, it is important that the warning is shown not as a
+point-event for the user to dismiss and forget, but as a persistent state
+shown together with the message, in the same space and time. TODO(xl): reword
+
 Users not responding to heartbeats
 ----------------------------------
 
