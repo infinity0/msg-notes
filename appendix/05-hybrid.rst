@@ -134,14 +134,14 @@ must fail G, and pF is A and not F[C].
 In terms of who is able to decode and identify initial or final packets, we
 assume that:
 
-- | for all pI with a given prev_pF: only { all of M'|M } can identify it, or
+- | for all pI with a given prev_pF: only { all of M'\|M } can identify it, or
   | for all pI with a given prev_pF: everyone can identify it
 - | for all pF with a given prev_pI:
-  | if pF is success: only { all of M’|M } or only { all of M } can identify it
-  | if pF is failure: only { all of M’|M } can identify it
+  | if pF success: only { all of M'\|M } or only { all of M } can identify it
+  | if pF failure: only { all of M'\|M } can identify it
 
 No other partitions are allowed, i.e. a process G may not be such that e.g. for
-a pIa with a given prev_pF, M'|M can identify it, but for a pIb on the same
+a pIa with a given prev_pF, M'\|M can identify it, but for a pIb on the same
 prev_pF, everyone can identify it; nor that e.g. some members of X := M'-M can
 identify a pF, but others cannot.
 
@@ -377,13 +377,13 @@ Of initial proposals
 --------------------
 
 Earlier, we required that pI proposals must be identifiable (decodable,
-interpretable) by all of M'|M (i.e. using any secret information they have) or
+interpretable) by all of M'\|M (i.e. using any secret information they have) or
 everyone (i.e. without any secret information). Let's look at this in more
 detail. We consider the following cases:
 
 1. for all pI with a given prev_pF: only { all of M' } can identify that pI
 2. for all pI with a given prev_pF: only { all of M } can identify that pI
-3. for all pI with a given prev_pF: only { all of M'|M } can identify that pI
+3. for all pI with a given prev_pF: only { all of M'\|M } can identify that pI
 4. for all pI with a given prev_pF: everyone can identify that pI
 
 M' is specific to the prev_pF and constant across all pI, and M is specific to
@@ -429,11 +429,11 @@ the following might apply:
 
 1. only { all of M' } can identify that pF
 2. only { all of M } can identify that pF
-3. only { all of M'|M } can identify that pF
+3. only { all of M'\|M } can identify that pF
 4. everyone can identify that pF
 
 We can immediately forbid (1) for the same reason as in the previous section,
-and forbid (4) as being unnecessary - nobody outside of M'|M needs to identify
+and forbid (4) as being unnecessary - nobody outside of M'\|M needs to identify
 pF packets, only pI ones, as per `hybrid-own-enter-channel` - it gives us no
 advantage to (3), and we leak less information that way.
 
