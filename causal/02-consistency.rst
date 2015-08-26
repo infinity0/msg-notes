@@ -55,10 +55,20 @@ state, then warn the user if it does not turn into an "OK" state after some
 time. So we need a timer primitive; we cannot *only* run consistency checks as
 part of a packet receive-handler.
 
-Before we jump straight into consistency, we'll look at reliability first.
-Brief overview of TCP; "ack seqnum", resends of higher seqnum packets. Our
-strategy is similar. TODO: Why not simply use transport reliability? See
-:ref:`transport-reliability` for why not.
+Before go further into consistency, let's briefly remind ourselves of the core
+reliability strategy that TCP uses (of which there are many specialisations):
+
+- each packet has a "sender-seqnum" that increments as more packets are sent
+- each packet also contains an "acknowledged-seqnum", to indicate that the
+  sender has received, from its peer, all packets with *that seqnum and lower*.
+- if a sender doesn't receive an ack of a seqnum (or a higher one) after a
+  while, it will resend that packet (and higher ones) to its peer.
+
+It may be tempting to "just use" this transport-level reliability, but there
+are :ref:`many reasons <transport-reliability>` why we reject this, not only as
+insecure but also as inappropriate for a truly end-to-end system. Still, the
+general ideas are sound; our strategy draws from this, moves it up a few layers
+*after* cryptographic verification, and extends it to work for groups.
 
 .. _full-ack:
 
@@ -247,7 +257,7 @@ Here are some concepts that form a foundation for our later ideas:
 
 ``FA_INTV``:
     Full-ack interval. This may be defined as ``2 * BC_LAT + M_INTV``, assuming
-    that each member will, if they don't implicitly ack a message, send an
+    that each member, if they don't implicitly ack a message, will send an
     automatic explicit ack of it after ``M_INTV``.
 
 The base concepts are random variables, that take different concrete values for
@@ -333,16 +343,19 @@ Single-ciphertext principle
 To simplify resends, we suggest to follow the "single-ciphertext principle" -
 each message is communicated as the same ciphertext for everyone, and this
 applies even if parts of it are encrypted to only a subset of the recipients.
-This makes it easy to detect duplicate resent messages, and also allows a
-member to resend a message authored by someone else, which is useful if the
-latter is absent. All members cache this ciphertext in case they have to resend
-it to others. When the message is fully-acked, the cached ciphertext may be
-deleted to save space. This should not affect security (e.g. forward secrecy)
-of the data, since the threat model already includes an eavesdropper that
-stores all ciphertext.
+This makes it easy to detect duplicate resent messages, and also enables each
+member to resend messages authored by someone else.
 
-TODO:
-- refine auto-deletion of old ciphertext that has been full-acked (cf code)
+For each message m, all members cache its ciphertext c in case they need to
+resend it to others, even if they didn't author it themselves. After m is
+fully-acked, c need never be resent again. However, implementations may still
+wish to store it for a while (at most, until when diracks(m) are themselves all
+fully-acked), so that they can recognise c if it is resent by others, and
+handle it as according to our de-duplication scheme.
+
+Caching ciphertext should not affect security (e.g. forward secrecy) of the
+message, since the threat model already includes an eavesdropper that
+permanently stores all ciphertext.
 
 If an entity - e.g. an XMPP server - can observe multiple recipients receiving
 the same ciphertext, then this links these recipients. Hiding this metadata is
@@ -360,11 +373,11 @@ Future consistency, consistency-on-leave.
 Transcript consistency may be constructed simply out of our message consistency
 primitives. When we want to part, we send a "intend-to-part" (FIN) message zm
 then wait for explicit acks to it. Once it is fully-acked, we reach consistency
-for all of anc(zm), which we'll treat as the transcript. Recipients should ack
-these immediately, instead of the usual behaviour of waiting a grace period for
-the user to manually send an implicit ack. Since there won't be any future
-chance to receive the acks, the sender may wait longer than usual for full-ack,
-some small multiple of ``BC_LAT``.
+for all of anc(zm), which we'll treat as the session transcript. Recipients
+should ack these quickly, e.g. within some small multiple of ``BC_LAT``,
+instead of the usual grace period before sending an automatic normal explicit
+ack. Since there won't be any future chance to receive the acks, the ackmon may
+want to use a longer "not-fully-acked" warning timeout.
 
 If we receive implicit or explicit acks to any message other than zm, we must
 ignore them or display/log them permanently with a warning, because we have no
@@ -382,7 +395,8 @@ This ensures consistency for messages that we delivered locally, including ones
 we sent. What about messages by others that we haven't delivered, including
 ones we haven't even received? We'll talk about this in the next section.
 
-TODO: mention second-order knowledge and link to below section
+TODO: mention second-order knowledge including link to :ref:`below section
+<consistency-vs-consensus>`.
 
 Future extensions
 =================
@@ -393,95 +407,158 @@ applications.
 
 Selective acks as in TCP. ("extra-mIds seen" on top of parents?)
 
-.. _transport-reliability:
-
 Rejected ideas
 ==============
+
+.. _transport-reliability:
 
 Transport-level reliability
 ---------------------------
 
-TODO: reword
+Commonly, cryptographic protocols ignore reliability, and assume it will be
+covered by a lower layer. The prevalence and relative success of TCP today
+probably encourages this. However, this is not always the best thing to do if
+one wants true end-to-end security properties, and we reject this for our group
+messaging scenario.
 
-Motivation, can't use transport-level reliability.
+Sometimes there is confusion on what "reliability" actually means. Let's clear
+this up now. Reliability is *not* about preventing drop (or denial of service)
+attacks; we assume that an attacker can always just drop everything if they
+want to. Protection from the external consequences of a drop attack is outside
+of our immediate scope, though we may return to it later. [#Ndrop]_
 
-- not authenticated
+Instead, reliability is about trying to recover from ordinary non-malicious
+transport failures. As mentioned earlier, these failures will eventually cause
+a failure of consistency checks, so it is "secure" to forego reliability in the
+sense that a bad condition will never be presented as a good one. But compared
+to true positives (i.e. failures due to actual attacks), innocent transport
+failures are very common, so not minimising false positives would expose us to
+the `base rate fallacy`_. Another way of putting this is that a warning which
+95% likely to be a false positive is useless security information, and a very
+bad user experience that may incentivise them towards less secure applications.
 
-- not relevant *to the application* (c.f. "internet smart at the edges", but
-  the edges means internet edges, not application edges. e.g. third party
-  MUC chat servers are "smart at the edges" of the internet, but we don't care
-  about this for application security purposes.)
+Reliability is independent from asynchronity. Asynchronity is the ability of a
+transport system to deliver a packet to all recipients even if some are not
+available (online) when the sender sends it. It is perfectly possible and
+desireable to build a communications system to be reliable *and* asynchronous.
+[#Nmail]_ In fact, the problems with transport layer reliability that we will
+mention, become more apparent and severe in an asynchronous setting; this
+reinforces our argument that reliability is best achieved in the messaging
+layer, *after* end-to-end verification.
 
-- *cannot* be relevant to the application - for efficiency, performance,
-  resource limitation, same reason why internet routers don't try to provide
-  reliability to a TCP connection.
+When talking about security or liveness properties, it is important to specify
+the subject and context of these properties. For example, the term "end-to-end
+encryption" was coined as a response to distinguish it from applications that
+make a big deal out that they "use encryption", but this turns out only to be
+in the transport layer between devices, and do not provide properties that are
+actually relevant to users, i.e. user-to-user confidentiality. Likewise,
+transport layer reliability is not directly relevant to messaging users, whom
+would rather have user-to-user reliability.
 
-- unnecessary failures, false positives, liveness vs security
+We continue our argument with a recap of internet architecture. The internet
+is a global device-to-device communications system ("transport layer") that
+enables pairs of devices (each with an IP address) to talk to each other, even
+if they are not directly connected via physical links. In this context, the
+*ends* are a pair of devices in this network, and each communication unit (IP
+packet) has a *from* and a *to* address that identifies these. The middle or
+*core* of the network are devices such as routers and switches, whose purpose
+is to forward others' packets correctly rather than sending their own packets.
 
-- ack failures necessarily happen *after* delivery, but typical reliability
-  mechanisms don't communicate this to higher layers
+Similarly, in the context of user-to-user communications systems ("application
+layer"), the ends (i.e. user devices) typically do not communicate *directly*
+using the IP protocol. Instead, communication is routed over several non-user
+IP devices, such as web, email, or chat servers. This can be viewed as an
+application-level virtual `overlay network`_ on top of the internet, whose
+middle nodes are end nodes in the context of the internet.
 
-It is quite common for cryptographic systems to ignore reliability, and assume
-it will be covered by a lower layer. The universal prevalence of TCP today
-probably encourages this. However, the group messaging scenario introduces some
-failure modes that cannot be recovered from by a lower layer, and this section
-will explain these and propose a fix. Such failures will eventually cause a
-failure of our consistency checks, so it is "safe" to ignore reliability; but
-unnecessary failures are bad user experience and may incentivise people to
-choose a less secure application, so should be avoided where possible.
+On the internet, the core attempts to provide a service (packet delivery), and
+the edges verify and attempt to enforce that this was provided (reliability).
+[#Ndumb]_ There are many good reasons for this separation of concerns in the
+network architecture. These include network resilience against attacks, edge
+robustness against different network failure modes, and resource and complexity
+constraints of the core to help network scalability. Our insight is that these
+reasons also hold in the group messaging context (a user-to-user communications
+system), and that user-to-user reliability is best achieved on the edges (ends)
+of its overlay network. To expand on some of these:
 
-To demonstrate what we mean by "unnecessary failures", we'll talk briefly about
-existing reliability mechanisms. Typically, these will continually resend a
-packet until it gets a transport-level ack from the recipient. These are not
-authenticated cryptographically, so transport-level delivery claims are not
-to be trusted, which is why we have message-level acks above. A malicious
-transport-level attacker can also just drop any packets to break reliability.
-However, there are other failure modes that *honest* transports can't recover
-from, but that *can* be recovered from at the end-to-end message level.
+**Failure modes**. With transports that run via a third party, the transport
+layer cannot detect certain end-to-end reliability failures, even if these
+parties are honest. For example, even if a sender's TCP subsystem delivers a
+packet reliably to the chat server ("first hop" in the application overlay
+network), it does not attempt this to the other recipients (the subsequent
+hops). The server's own TCP subsystem may attempt this, but we (the sender)
+have no way to find out whether it succeeds, nor *verify* this. The recipients
+may even be offline, in which case reliable delivery (at least over TCP) is
+impossible, even if they were online at the time of the original send.
 
-TCP doesn't communicate ack failures to higher layers. If your partner drops
-their connection right after your message is passed to TCP, an ack will never
-be received. Our application might automatically start a new TCP session later,
-but this won't know about the lost message from the previous session, resulting
-eventually in consistency failure. In the instant messaging case, these types
-of failure may be rare, but they are still unnecessary. And they become much
-more common and problematic if we want to support asynchronous messaging, where
-not all users are online at once - there is no Internet standard for a generic
-reliable asynchronous transport. [#Neml]_
+**Resource constraints**. Some servers try to mitigate the above failure modes,
+by resending packets to those offline clients when they come back online.
+[#Nxmpp]_ But in all cases, the scope of this reliability is limited: by time,
+by packet-count, or by some other resource. This is an inherent limitation of
+public servers: they cannot offer *unconditional* user-to-user reliability
+since this requires unconditional buffering of unacked packets - but that may be
+abused by malicious clients resulting in denial of service. Even if they did
+provide this, the clients still need a way to *verify* it. By contrast, user
+clients have the incentive to indefinitely buffer their own not-fully-acked
+messages, and the ability to verify the success of their delivery.
 
-With transports that run to a third party, such as a TCP session to a central
-reflector server, the transport layer does not detect end-to-end reliability
-failures, even if the server is honest. No matter how hard the server tries to
-guarantee simultaneous presence, some clients may be offline when a packet is
-first sent. Some servers try to mitigate this, by resending packets to those
-offline clients when they come back online. In XMPP, several mechanisms exist
-that approximate this: `session resumption`_ for short transport failures, and
-`discussion history`_ as ad-hoc opportunistic context on joining a channel.
-However, in both cases the scope of reliability is limited, either time-wise or
-packet-count-wise. This is an inherent limitation of public servers: they are
-unable to offer *unconditional* end-to-end reliability since this requires
-unconditional buffering of unacked packets, but that may be abused by malicious
-clients resulting in denial of service. By contrast, clients have the incentive
-to indefinitely buffer their own not-fully-acked messages.
+**Authentication**. Reliability that works on a lower layer are not end-to-end
+authenticated, and therefore may be forged. For example, in a MUC chat server
+scenario that forces TLS, we achieve reliability and authentication in the
+transport (the internet), but not on the application layer (between the chat
+users) - the server can easily forge ACKs from each member to everyone else. We
+only achieve the latter if reliability occurs *after* end-to-end verification.
 
-That is not to say transport-level, or third-party, or non-authenticated,
-reliability schemes are useless. They are quite cheap to run, and recover from
-most failures. But the non-recoverable failure rate is much higher in certain
-environments or for certain use-cases, so it is prudent to implement a more
-expensive but more robust authenticated end-to-end scheme.
+**Correctness.** ACK failures necessarily can only happen *after* delivery, but
+TCP doesn't notify higher layers about these. If the recipient drops their
+connection right after you pass your payload to your TCP subsystem, they will
+never ack this to you, so in general we won't know if the peer received our
+packet. TCP assumes that the higher layer will detect it (e.g. when a reply is
+missed), or that it's not important. However, this assumption is not safe in
+general, and for group messaging the higher layer is human users who are
+generally unreliable at automatically noticing implicit semantic details. So we
+choose to pass these notifications explicitly.
 
+To be clear, we do *not* suggest that transport reliability schemes should not
+be used. Everyone already has TCP for free, and it recovers from very common
+transport failures. Rather, we argue that it is vital to have a "last guard"
+mechanism on the application layer, that provides better guarantees and lower
+false positive rates, *whether or not* we have transport reliability.
+
+.. [#Ndrop] For an example of an "external consequence": dropping the first
+    message of a session may cause future sessions to re-use the same long term
+    key in the next session. This may reduce or eliminate the forward secrecy
+    of the first message, which may be a problem if this first message was
+    supposed to be the second message of the disrupted session. One protection
+    is to use a lossy ratchet such as `Axolotl`_ (i.e. that doesn't guarantee
+    reliability nor ordering) to derive session keys, and use these instead of
+    long term keys, but still generate message keys (of the same session) using
+    a strongly ordered ratchet that does not tolerate losses. Other external
+    consequences will need to be dealt with in their own specific way.
+
+.. [#Nmail] Email is asynchronous and somewhat reliable (has limited resending)
+    but it has a lot of unnecessary complexity and historical baggage, and is
+    generally considered unsuitable to build clean applications on top of.
+
+.. [#Ndumb] One often hears this described as "dumb core" and "smart edges".
+    To be clear, routing and reliability can both get very complex - rather,
+    the contrasting adjectives refer to the fact that complex applications are
+    typically built on edge devices, and less commonly so core devices.
+
+.. [#Nxmpp] In XMPP, several mechanisms exist that approximate this:
+    `session resumption`_ for short disconnects, and `discussion history`_ as
+    ad-hoc opportunistic context on joining a channel.
+
+.. _Base rate fallacy: https://en.wikipedia.org/wiki/Base_rate_fallacy
+.. _Overlay network: https://en.wikipedia.org/wiki/Overlay_network
 .. _Session resumption: http://xmpp.org/extensions/xep-0198.html#resumption
 .. _Discussion history: http://xmpp.org/extensions/xep-0045.html#enter-history
-
-.. [#Neml] Email resending is application specific, has a lot of baggage, and
-    is generally considered unsuitable to build clean applications on top of.
+.. _Axolotl: https://github.com/trevp/axolotl/wiki
 
 .. _consistency-vs-consensus:
 
 Consistency vs consensus
 ------------------------
-
-TODO: reword
 
 In our usage, consistency is *not* consensus. Consensus is about agreeing on a
 future value or action, that has not been decided yet; consistency is about
@@ -490,19 +567,19 @@ Byzantine fault tolerance techniques (which have probabilistic success), and
 can achieve a stronger guarantee with simpler techniques.
 
 With consistency, we only achieve "first-order" knowledge - that is, for each
-message m, from the view of a member u, u knows (P) everyone has seen m, but u
-doesn't know if (Q) others know P, nor if (R) they know u knows P, etc. That's
-OK; we don't foresee any situation where we need those latter properties, so
-they are lesser concerns. For comparison, consensus requires us to achieve
-`common knowledge`_ (i.e. "infinite-order" knowledge).
+message m, from the view of a member u, u knows (P: everyone has seen m), but u
+doesn't know if (Q: others know P), nor (R: they know u knows P), etc. For
+comparison, consensus requires us to achieve `common knowledge`_ (i.e.
+"infinite-order" knowledge).
 
-We believe that this is not a security problem - it is the responsibility of
-each user to check that all messages they see are fully-acked. If our ack is
-dropped, then even though we don't know they have received our ack, we know
-that they will not treat the un-acked (from their view) message as part of the
-consistent transcript - it is not in their interest to do so. So we don't need
-to *guarantee* that our own explicit acks are fully-acked. This avoids the
-Byzantine agreement problem.
+We don't foresee any situation where we need those latter properties, and we
+believe that their absence is not a security problem. It is the responsibility
+of each user to check that all messages they see are fully-acked. For a message
+m that we acked with am, even though we don't explicitly check if the recipient
+actually received am, we know at least that if the transport drops am, they
+would not treat m as fully-acked, i.e. a maybe-unsafe situation would not be
+presented as safe. Further, the way that we handle duplicate packets mentioned
+above, gives some extra confidence against this particular scenario.
 
 A related concept that *does* provide a guarantee for explicit acks, is
 :ref:`heartbeats <heartbeats>`. These can be thought of as automatic explicit
