@@ -205,14 +205,12 @@ send a further automatic explicit ack to ack it. [#Nainf]_
 Ack semantics
 -------------
 
-TODO: reword this section
-
-An implicit ack, such as a normal user message, indicates "some" level of
-understanding of previous messages. [#Nread]_ Automatic explict acks *should
-not* be interpreted to carry this same weight, because the user has no control
-over whether they actually read those messages or not. If one desires an
-explicit "user-level" ack (e.g. in critical situations) there are a few
-options:
+A normal message (that was manually sent) indicates "some" understanding of the
+content of previous messages. [#Nread]_ On the other hand, an explict ack that
+was sent automatically *should not* be interpreted to carry the same weight,
+since the user has no control over whether they actually read its ancestors or
+not. If the application wishes to provide an explicit "user understood" ack,
+useful for timing-critical situations, they may add:
 
 - a manual explicit ack, that must be initiated by the user - like acks in
   `Pond`_, which are just empty messages.
@@ -221,8 +219,15 @@ options:
   ack. This is triggered automatically, but only when the user is interacting
   with the application, or has it focused in the foreground.
 
-These would be implemented as a supplement to the automatic ack. Other
-projects' terminology for these concepts include "delivery receipt" for
+These would be implemented as a separate message type, distinguishable from and
+not replacing our automatic explicit acks from the previous section.
+
+Alternatively, the application may avoid adding any extra features, and just
+have the user manually send the string "ack" (or equivalent) in a normal
+message. Semantically this is an explicit ack, but the application would be
+unable to distinguish it from an implicit one.
+
+Other projects' terminology for these concepts include "delivery receipt" for
 "automatic ack" and "read receipt" for "manual/pseudo-manual ack".
 
 .. _Pond: https://pond.imperialviolet.org/tech.html
@@ -366,40 +371,74 @@ that try to explicitly provide unlinkability will need to think about this.
 Transcript consistency
 ======================
 
-Straightforward after "full-ack". Similar to TCP - send FIN.
+For any given message, we have a mechanism to reach consistency for it and its
+ancestors. To achieve "transcript consistency" then, we just need to define
+clearly what the "transcript" is, then apply this mechanism. This reduces down
+to defining what the final messages (i.e. maximum in the causal order) are,
+which fully determines the rest of the transcript.
 
-Future consistency, consistency-on-leave.
+We begin as usual, by taking inspiration from our old friend TCP. We abstract
+its concrete mechanism, then translate this to the group messaging context. The
+TCP close process is actually two separate processes, that each close one half
+of the full-duplex (send, recv) stream pair:
 
-Transcript consistency may be constructed simply out of our message consistency
-primitives. When we want to part, we send a "intend-to-part" (FIN) message zm
-then wait for explicit acks to it. Once it is fully-acked, we reach consistency
-for all of anc(zm), which we'll treat as the session transcript. Recipients
-should ack these quickly, e.g. within some small multiple of ``BC_LAT``,
-instead of the usual grace period before sending an automatic normal explicit
-ack. Since there won't be any future chance to receive the acks, the ackmon may
-want to use a longer "not-fully-acked" warning timeout.
++----------+----------------------------+-------------------------------------+
+| TCP      | Pair session (abstract)    | Group session (abstract)            |
++==========+============================+=====================================+
+| send FIN | I have no more to send     | (same)                              |
++----------+----------------------------+-------------------------------------+
+| recv ACK | Peer got all that I sent   | Everyone got all that I sent        |
++----------+----------------------------+-------------------------------------+
+| recv FIN | Peer has no more to send   | Everyone has no more to send me     |
++----------+----------------------------+-------------------------------------+
+| send ACK | I got all that peer sent   | I got all that everyone sent to me  |
++----------+----------------------------+-------------------------------------+
 
-If we receive implicit or explicit acks to any message other than zm, we must
-ignore them or display/log them permanently with a warning, because we have no
-chance to verify their consistency. The same goes for implicit acks to zm.
+We'll use these concepts as a base from which to explore and develop concrete
+proposals for defining the "end" of a session. They also form a common ground
+to help explain our proposals to others. The first naive idea that arises is to
+define the session transcript as the union of the ancestors of everyone's FIN
+messages. To reach consistency, we wait for all of these to become fully-acked.
+However, this only works well if everyone wants to leave the session together.
 
-If we fail to reach full-ack for zm (i.e. time out waiting for it), then we
+To define a double-half-close process in a group session requires more precise
+treatment of how this interacts with membership changes. Intuitively, when the
+receive side closes (i.e. "everyone has no more to send me") is exactly when I
+am excluded from the session, but what does the send side correspond to? We'll
+explore this later in :doc:`partial visibility <05-visibility>`; for now we
+skip this to propose a single-full-close process as an intermediate feature.
+
+The process is as follows: when we want to part, we send a *both-FIN* message
+zm, that means "I have no more to send, and I will accept no more from anyone".
+Then, we wait for explicit acks to it. Once it is fully-acked, we reach
+consistency for all of anc(zm), which we'll define as the session transcript.
+Recipients should ack these quickly e.g. within some small ratio of ``BC_LAT``,
+instead of waiting the usual grace period before sending a normal automatic
+explicit ack. On the other hand, since there won't be any future chance to
+receive the acks, they may use a longer-than-usual "not-fully-acked" timeout.
+
+If we receive user messages not in anc(zm), we must ignore them or display/log
+them permanently with a warning, because we have no chance to verify their
+consistency - and we committed to not accepting them anyway when we sent zm.
+
+If we fail to reach full-ack for zm (i.e. time out waiting for this), then we
 still have consistency for all the messages we had previously reached full-ack
 for, which hopefully is almost equal to anc(zm). For all other messages, we
 should display/log them permanently with a warning.
 
-TODO: construct a similar mechanism for cases where someone else wants to force
-us to part the session.
+Even if we reach full-ack for zm, this process does not guarantee that others
+know that we have reached this good state. Likewise, TCP has no *guaranteed*
+confirmation that a peer received our ACK to their FIN. We :ref:`don't believe
+<consistency-vs-consensus>` this to be a security problem, however.
 
-This ensures consistency for messages that we delivered locally, including ones
-we sent. What about messages by others that we haven't delivered, including
-ones we haven't even received? We'll talk about this in the next section.
-
-TODO: mention second-order knowledge including link to :ref:`below section
-<consistency-vs-consensus>`.
+We have not yet suggested what the remaining members should do to continue the
+session without us. This will be explored later, together along with the other
+issues on membership changes mentioned above.
 
 Future extensions
 =================
+
+TODO: better wording here
 
 Use ML to tweak flow control, just like we have various complex TCP flow
 control algorithms. Probably not necessary for "text messaging" low-bandwidth
@@ -578,8 +617,9 @@ of each user to check that all messages they see are fully-acked. For a message
 m that we acked with am, even though we don't explicitly check if the recipient
 actually received am, we know at least that if the transport drops am, they
 would not treat m as fully-acked, i.e. a maybe-unsafe situation would not be
-presented as safe. Further, the way that we handle duplicate packets mentioned
-above, gives some extra confidence against this particular scenario.
+presented as safe. Further, the way that we handle resent duplicate packets
+gives some extra confidence in this particular scenario - similar to how TCP's
+TIME_WAIT state handles FIN resent by the peer, when the ACK to it is dropped.
 
 A related concept that *does* provide a guarantee for explicit acks, is
 :ref:`heartbeats <heartbeats>`. These can be thought of as automatic explicit

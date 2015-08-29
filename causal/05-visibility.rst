@@ -4,17 +4,21 @@ Partial visibility
 Member-sets
 -----------
 
-Diff and apply
-``````````````
+- diff and apply
+
+Operations on the causal order
+------------------------------
+
+Define "cut" in the graph, generalisation of "before" and "after".
+
+Expand definition of "acked-by".
+
+Expand algorithms for FIN/ACK.
 
 Subjective vs objective views
 -----------------------------
 
-Merge restrictions on member-set operations
--------------------------------------------
-
-Invite vs rejoin
-----------------
+- Rejoin semantics
 
 Merge algorithm
 ---------------
