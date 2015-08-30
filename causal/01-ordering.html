@@ -1,0 +1,508 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Ordering &mdash; msg-notes 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="msg-notes 0.0.0 documentation" href="../index.html" />
+    <link rel="up" title="Causal ordering" href="index.html" />
+    <link rel="next" title="Consistency" href="02-consistency.html" />
+    <link rel="prev" title="Causal ordering" href="index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="02-consistency.html" title="Consistency"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Causal ordering"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Causal ordering</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="ordering">
+<h1>Ordering<a class="headerlink" href="#ordering" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="data-structures">
+<h2>Data structures<a class="headerlink" href="#data-structures" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="partial-orders">
+<h3>Partial orders<a class="headerlink" href="#partial-orders" title="Permalink to this headline">¶</a></h3>
+<p>A <a class="reference external" href="https://en.wikipedia.org/wiki/Partially_ordered_set">partial ordering</a> is a set of elements with a binary relation ≤ that is
+reflexive, antisymmetric, and transitive. It can be represented as a <a class="reference external" href="https://en.wikipedia.org/wiki/Directed_acyclic_graph">directed
+acyclic graph</a> (DAG), where nodes represent the elements, and paths represent
+the relationships. Using this structure, we can begin to model messages in a
+distributed system for a group communications session.</p>
+<p>Each node m ∈ M represents a message, sent by a sender u ∈ U. <a class="footnote-reference" href="#nsep" id="id1">[1]</a>
+The relation a ≤ b (a &#8220;before&#8221; b) means that the sender of b knew the
+contents of a, when they wrote b. As a shortcut, let us also define ≥
+(&#8220;after&#8221;) such that a ≥ b ⇔ b ≤ a, and ⊥ (&#8220;independent&#8221;) such
+that a ⊥ b ⇔ (¬ a ≤ b ∧ ¬ a ≥ b). Note that in a partial
+order, ¬ (a ≤ b) does <em>not</em> imply a ≥ b.</p>
+<p class="graphviz">
+<img src="../_images/graphviz-58e21d68baae18dc2c52e08f65eb8598a26121d0.png" alt="digraph relations {
+rankdir=RL;
+node [height=0.5, width=0.5, style=filled, label=&quot;&quot;];
+m [fillcolor=&quot;#ffffff&quot;, label=&quot;m&quot;];
+p [fillcolor=&quot;#ff6666&quot;];
+q [fillcolor=&quot;#ff6666&quot;];
+s [fillcolor=&quot;#66ff66&quot;];
+t [fillcolor=&quot;#66ff66&quot;];
+x [fillcolor=&quot;#999999&quot;];
+y [fillcolor=&quot;#999999&quot;];
+z [fillcolor=&quot;#999999&quot;];
+s -&gt; m -&gt; p;
+t -&gt; m -&gt; q;
+s -&gt; x -&gt; p;
+z -&gt; q; t -&gt; y;
+}" />
+</p>
+<p>In the diagram above, where an edge a ← b means that a ≤ b,</p>
+<ul class="simple">
+<li>red nodes (and m <a class="footnote-reference" href="#nnat" id="id2">[2]</a>) are <em>before</em> m; all others are <em>not-before</em> m.</li>
+<li>green nodes (and m) are <em>after</em> m; all others are <em>not-after</em> m.</li>
+<li>grey nodes are neither before nor after m, but <em>causally independent</em> of it.</li>
+</ul>
+<p>Since ≤ is transitive, a ≤ b means that the sender of b knows all
+messages before a as well. (We&#8217;ll talk about how to enforce this in a real
+system soon.) As a shortcut, define <strong>anc(m)</strong> = {a | a ≤ m}, i.e. the set
+of ancestors of m, including m. This set can be interpreted as the possible
+&#8220;causes&#8221; of m, like the discrete equivalent of a <a class="reference external" href="https://en.wikipedia.org/wiki/Light_cone">light cone</a>.</p>
+<p>In our scheme, each message m declares its immediate predecessors P =
+<strong>pre(m)</strong>. This defines a few relationships: ∀ p ∈ P: p &lt; m. (This
+is why we drew ← for ≤ in the above graph, rather than
+→ - the references belong to the later message; one cannot predict
+in advance what messages will come after yours.) <em>Immediate</em> means that there
+is nothing between them, i.e. ∄ q: p &lt; q &lt; m. One result of this is
+that all parents (from now on we&#8217;ll exclusively use this term) must be causally
+independent of each other (&#8220;form an <a class="reference external" href="https://en.wikipedia.org/wiki/Antichain">anti-chain</a>&#8221;).</p>
+<p>Our definition means that pre(m) forms a <a class="reference external" href="https://en.wikipedia.org/wiki/Transitive_reduction">transitive reduction</a> of ≤. This
+eliminates redundant information from the contents of a message. This is good,
+because redundant information is a security liability - it needs to be checked
+for consistency, from the &#8220;canonical&#8221; sources of the information, but then we
+might as well use those sources to directly calculate this information. Here,
+enforcing immediacy and independence actually lets us achieve some stronger
+guarantees &#8220;for free&#8221; - e.g., protection against rewinding of vector clocks;
+see next section.</p>
+<p>References must be globally consistent and immutable - i.e. to see a reference
+allows one to verify the message contents, and no-one can forge a different
+message for which the reference is valid, not even the original sender. One
+simple implementation option is use a hash of the ciphertext as the reference.
+(Those familiar with Git will see the similarities with their model of
+immutable commit objects.) <a class="reference internal" href="../appendix/04-extras.html#encoding-message-identifiers"><span>Defining message identifiers</span></a> explores this
+and alternatives in more detail.</p>
+<p>There are two ways to know a valid reference - deriving it from the message
+contents, or seeing it elsewhere (e.g. in pre(m) of a child) <em>without having
+seen</em> the message itself. That is, a member could make a false declaration that
+they&#8217;ve seen a real message, if they see someone else refer to it - and no-one
+can detect whether this declaration is false or true. (Note that this is a
+distinct case from falsely declaring that one has seen a fake i.e non-existent
+message, which <em>can</em> be detected as described further below.)</p>
+<p>We assume that people won&#8217;t do this - there is no strategic benefit in claiming
+to know something that you are entitled to know but temporarily don&#8217;t. The
+worst that may happen is that someone issues a challenge you cannot answer, but
+only your reputation would suffer. Also, if you haven&#8217;t seen the message, you
+are unable to verify that the reference is indeed valid, so someone else might
+be trying to trick <em>you</em>. However, if this security assessment turns out to be
+wrong, there are <a class="reference internal" href="../appendix/04-extras.html#author-specific-message-identifiers"><span>measures</span></a> we can
+take to close this hole, but they are more complex so we ignore them for now.</p>
+<table class="docutils footnote" frame="void" id="nsep" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>Some other systems treat send vs deliver (of each message m) as two
+separate events, but we don&#8217;t do this for simplicity. The sender delivers m
+to itself <em>immediately</em> after they send it, so the system will never see an
+event that is after send[m] but not-after deliver[m]; nor an event that is
+before deliver[m] but not-before send[m].</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="nnat" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[2]</a></td><td>In natural language, ≤ is really <em>before or equal to</em>. We say
+<em>before</em> here because that&#8217;s shorter. We use ≤ instead of &lt; because that
+makes most formal descriptions shorter. Unless otherwise specified, we&#8217;ll
+use <em>before</em> for ≤ and <em>strictly before</em> for &lt;, and likewise for <em>after</em>
+and ≥.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="causal-orders">
+<h3>Causal orders<a class="headerlink" href="#causal-orders" title="Permalink to this headline">¶</a></h3>
+<p>Partial orders can be used to describe the relative ordering of neutral events.
+In a causal order, we introduce agents that can observe and generate events. In
+the context of messaging, each event is a message with exactly one <em>sender</em> and
+a set of <em>recipients</em>, collectively called its <em>members</em>. Define <strong>by(u)</strong> as
+the set of all messages sent by u. This set is totally-ordered on ≤, i.e.
+every element is either before or after every other. Roughly, this constrains
+the number of branches that may exist at any point, and helps the graph be
+&#8220;more linear&#8221;.</p>
+<p>Often, we&#8217;ll find it useful to refer to the subjective session-view that a
+sender has when they send a message. Define <strong>context(m)</strong> as a mapping
+members(m) → anc(m), such that context(m)(u) is the latest message
+by u seen by the sender of m, or ⊥ (&#8220;null&#8221;) if no such message exists.
+Formally:</p>
+<p>context(m): members(m) → anc(m) = u ↦ max(by(u) ∩ anc(m))</p>
+<p>where max() gives the maximum element of a totally-ordered set, or ⊥ if it
+is empty. We say a context c ⊏ c&#8217; (&#8220;strictly less advanced&#8221;) iff
+∀ u: c(u) = ⊥ ∨ c(u) ≤ c&#8217;(u) and c ≠ c&#8217;.</p>
+<p>Unlike pre(m) and members(m), by(u) depends implicitly on the set of messages
+that have been delivered so far, so might more accurately be denoted T.by(u),
+where T is the current transcript. Though context(m) also refers to other
+messages, any valid transcript that contains m must already contain anc(m) and
+therefore context(m), so it is unambiguous regardless of the transcript.</p>
+<p>Context is semantically equivalent to a <a class="reference external" href="https://en.wikipedia.org/wiki/Vector_clock">vector clock</a>. As with vector clocks,
+malicious senders may &#8220;rewind&#8221; the context they are supposed to declare with
+each message. If this redundant information is trusted, this enables certain
+re-ordering attacks. For example, I should not be allowed to claim that my
+last-received-from-A is 9, if I&#8217;ve already claimed that my last-received-from-B
+is 12, but in message 12, B claimed that their last-received-from-A is 10. (A
+more simple version of this with only 2 members is in the diagram below.)</p>
+<p>To protect against this, we introduce <em>context consistency</em>: all messages must
+have a context that is strictly more advanced than the context of strictly
+earlier messages. Or, in other words, a message may not declare a parent that
+is before a parent of a strictly earlier message. Formally:</p>
+<p>∀ m&#8217;, m ∈ &lt;: context(m&#8217;) ⊏ context(m) (or equivalently)
+∀ p&#8217; ∈ pre(m&#8217;), p ∈ pre(m): ¬ p ≤ p&#8217; (TODO: prove the equiv)</p>
+<p class="graphviz">
+<img src="../_images/graphviz-c1e3e27672302bd27a84ca8cf2f1b633f5462718.png" alt="digraph freshness_consistency {
+rankdir=RL;
+node [height=0.5, width=0.5];
+edge [weight=2];
+
+subgraph clusterA {
+    label=&quot;by(A)&quot;;
+    labeljust=&quot;r&quot;;
+    2 -&gt; 1;
+    node [style=invis];
+    r -&gt; s -&gt; 2 [style=invis];
+}
+
+subgraph clusterB {
+    label=&quot;by(B)&quot;;
+    labeljust=&quot;r&quot;;
+    4 -&gt; 3;
+    node [style=invis];
+    3 -&gt; p -&gt; q [style=invis];
+}
+
+edge [weight=1];
+3 -&gt; 2;
+4 -&gt; 1 [color=&quot;#ff0000&quot;, headport=se, tailport=nw];
+}" />
+</p>
+<p>Context consistency forbids the 1 ← 4 reference. This may seem like
+quite a complex property to enforce, but actually we do not need to directly
+enforce it.</p>
+<p><strong>Theorem</strong>: <em>transitive reduction</em> entails <em>context consistency</em>. Proof
+sketch: if m&#8217; &lt; m then ∃ p ∈ pre(m): m&#8217; ≤ p &lt; m. Since ≤ is
+transitive, ∀ p&#8217; ∈ pre(m&#8217;): p&#8217; &lt; p ≡ anc(p&#8217;) ⊂ anc(p).
+By transitive reduction, no other q ≠ p ∈ pre(m) may belong to anc(p), so
+q ∉ anc(p&#8217;) ≡ ¬ q ≤ p&#8217; (for all p&#8217;, q) as required. []</p>
+<p>So, we recommend that a real implementation should not encode context(m)
+explicitly, since it generally has redundant information that will need to be
+checked. Instead, one should enforce that pre(m) is an anti-chain (see below),
+which automatically achieves context consistency. Then, one may locally
+calculate context(m) from pre(m), using the following recursive algorithm:
+TODO: write this and link to the appendix.</p>
+</div>
+<div class="section" id="invariants">
+<h3>Invariants<a class="headerlink" href="#invariants" title="Permalink to this headline">¶</a></h3>
+<p>Let us summarise the invariants on our data structure.</p>
+<ul>
+<li><p class="first">≤ is reflexive:</p>
+<p>∀ a: a ≤ a</p>
+</li>
+<li><p class="first">≤ is anti-symmetric:</p>
+<p>∀ a, b: a ≤ b ∧ b ≤ a ⇒ a = b</p>
+</li>
+<li><p class="first">≤ is transitive:</p>
+<p>∀ a, b, c: a ≤ b ∧ b ≤ c ⇒ a ≤ c</p>
+</li>
+<li><p class="first">pre(m) is an anti-chain and forms a transitive reduction of ≤:</p>
+<p>∀ m: ∀ p, p&#8217; ∈ pre(m): p ⊥ p&#8217;</p>
+<p>as above, this entails context consistency</p>
+</li>
+<li><p class="first">by(u) is a chain / total-order:</p>
+<p>∀ u: ∀ m, m&#8217; ∈ by(u): m ≤ m&#8217; ∨ m&#8217; ≤ m</p>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="enforcement">
+<h2>Enforcement<a class="headerlink" href="#enforcement" title="Permalink to this headline">¶</a></h2>
+<p>Reflexivity and anti-symmetry do not need special protocol-level behaviour to
+enforce; implementations might check their own correctness with unit tests.</p>
+<p>Enforcing transitivity means we must show messages to the user in <a class="reference external" href="https://en.wikipedia.org/wiki/Topological_sort">topological
+order</a>. For each incoming m, if any of its parents p ∈ pre(m) have not yet
+been delivered <a class="footnote-reference" href="#ndlv" id="id3">[3]</a>, we place m in a buffer, and wait for all of pre(m) to
+be delivered first before delivering m. This allows us to verify that the
+parent references are actually of real messages. To protect against DoS, the
+buffer should be limited in size; see the next section for details.</p>
+<p>The result is that we deliver all of anc(m) before we deliver m, i.e. the user
+sees anc(m) before m. This applies for messages the user sends too, assuming we
+set the parents correctly. This achieves transitivity on the local side, but it
+is quite hard to detect whether <em>other</em> members are doing this. (One option is
+to require m to mention <em>all</em> of anc(m), but obviously this costs too much
+bandwidth.) But earlier, we argued that there is no incentive for users to
+cheat this; we will make this assumption going forward.</p>
+<p>Enforcing transitive reduction can be done using only information from m and
+anc(m). Since messages are only added to the data structure in topological
+order, everyone has this information so they can enforce it themselves.
+Messages that break this may simply be dropped, with a local UI warning as to
+the source. The <a class="reference internal" href="04-state.html#merge-algorithm"><span>merge algorithm for DAGs</span></a> includes a
+check that the inputs form an anti-chain, and it may be run on the pre(m) of
+every message accepted, including for single-parent messages.</p>
+<p>Enforcing total ordering can be done only when someone accepts messages from
+both forks, which not everyone else might see. To help this propagate, users
+that see this condition, must re-broadcast all messages within both forks to
+everyone else, then leave the conversation with a BAIL error message (TODO:
+elaborate possible errors) that references both forks. Note that one of the
+references may have to be indirect if we already replied to the other fork, to
+preserve transitive reduction. We should never need to do this for a triple
+fork; bail should be immediate upon attempting to deliver a double fork. It is
+not essential that everyone receives this, since lack of future participation
+will indicate that something is wrong, but this helps to narrow down the cause.</p>
+<table class="docutils footnote" frame="void" id="ndlv" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[3]</a></td><td>Here, &#8220;deliver&#8221; is standard distributed-systems terminology, and
+means to make the message available to higher layers for subsequent
+operations, such as displaying in a UI. However, in colloquial messaging
+contexts, &#8220;deliver&#8221; sometimes means &#8220;remote completion of a send&#8221;, e.g. as
+in &#8220;delivery receipt&#8221;; so sometimes we&#8217;ll use the term &#8220;accept&#8221; instead.</td></tr>
+</tbody>
+</table>
+<div class="section" id="detecting-transport-attacks">
+<h3>Detecting transport attacks<a class="headerlink" href="#detecting-transport-attacks" title="Permalink to this headline">¶</a></h3>
+<p>By &#8220;transport attacks&#8221;, we mean replays, re-orders, and drops of packets, by an
+attacker that can affect the physical communications infrastructure. We assume
+that external cryptographic authentication will allow us to detect packets
+injected by a non-member.</p>
+<p>Detecting replays is easy, assuming that our decryption scheme verify-decrypts
+duplicate packets so that they have the same parents (and contents and other
+metadata); then this will be deserialised into an already-existing node in our
+transcript graph. If we cache the ciphertext (and there is <a class="reference internal" href="02-consistency.html#single-ciphertext"><span>reason to</span></a>), we don&#8217;t even need to verify-decrypt it the second time.</p>
+<p>Enforcing transitivity is basically an exercise in correcting the order of
+messages, so we are already covered there.</p>
+<p>For drops, let&#8217;s consider &#8220;causal drops&#8221; first - drops of messages that caused
+(are <em>before</em>) a message we <em>have</em> already received. Messages in the delivery
+buffer will have three types of parents: those already accepted, those also in
+the buffer, and those that haven&#8217;t been seen yet. For the last case, this is
+either because the parent p doesn&#8217;t exist (the sender is lying), or because the
+transport is being unreliable or malicious.</p>
+<p>We don&#8217;t assume the transport is reliable, so we should give it a grace period
+within which to expect p to arrive. After this expires, we should assume that
+we&#8217;ll never receive p for whatever reason, emit a UI warning (&#8220;referenced
+message p didn&#8217;t arrive on time&#8221;), and drop messages that transitively point to
+p from the buffer. This is safe even if p turns out to be real and we receive
+it later; others&#8217; <a class="reference internal" href="02-consistency.html#reliability"><span>reliability</span></a> schemes will detect this and
+resend us the dropped messages. If we do eventually receive p later, we should
+cancel the warning, or at least downgrade its severity, based on how timely we
+expect the transport to be.</p>
+<p>If we never receive p, we cannot know <em>for sure</em> whether the sender was lying
+or the transport was malicious. In the basic case, there is no incentive for
+the sender to lie, but if we just <em>assume</em> the transport is malicious (and take
+some action A in response to this) then ironically we <em>give</em> the sender an
+incentive to lie - they can frame the transport to induce us to do A, which may
+have unintended consequences. So, we should be careful in how we communicate
+this fault to the user, and not imply blame on any party.</p>
+<p>Detecting <em>non-causal drops</em> - drops of messages not-before a message we&#8217;ve
+already received, and therefore we don&#8217;t see any references to - is more
+complex, and we will cover this in <a class="reference internal" href="03-freshness.html"><em>freshness</em></a>.</p>
+<p>If the first message has replay protection (e.g. if it is fresh), we also
+inductively gain this for the entire session. This is because each message
+contains unforgeable references to previous parent messages, so everything is
+&#8220;anchored&#8221; to the first non-replayable message.</p>
+</div>
+</div>
+<div class="section" id="buffering-and-asynchronous-operation">
+<h2>Buffering and asynchronous operation<a class="headerlink" href="#buffering-and-asynchronous-operation" title="Permalink to this headline">¶</a></h2>
+<p>Our strong ordering (transitivity) approach requires a reliable transport. If a
+message is dropped, this prevents later messages from being displayed. We can
+improve this with end-to-end recovery (explained <a class="reference internal" href="02-consistency.html#reliability"><span>next</span></a>),
+but this is less effective in an asynchronous scenario, i.e. where members may
+not online at the same time. We depend more heavily on a third-party service to
+store-and-forward messages in an intelligent way, e.g. to resend ciphertext
+even if the original sender is offline. In the worst case where no two members
+are online simultaneously, this dependency becomes an absolute <em>requirement</em>.</p>
+<p>Such a service must provide the interface &#8220;send ciphertext T to recipient R&#8221;.
+By itself, this should not reduce data security, since we assume there is an
+attacker that already stores all ciphertext. (Metadata security is a harder
+problem that is outside of our current scope - but at least this architecture
+is no worse than existing transports.)</p>
+<p>This adds extra development cost in a real application: at present there are
+architectural issues with some existing asynchronous delivery or &#8220;push&#8221; systems
+that make this sort of reliability awkward; email works, but leaks significant
+mounts of metadata. However, we believe that there is demand for a general
+reliable asynchronous transport as a piece of core internet infrastructure,
+which would be useful for many other services and applications too. So, at
+least within the scope of this document, we will work with this assumption, to
+clearly divide our problem between security and asynchronous reliability.</p>
+<p>We may also explore quasi-reliability schemes, that avoid buffering but still
+provide strong ordering. For example, if the transport can deliver large
+packets without splitting them, then whenever the user sends a message m, we
+can &#8220;piggyback&#8221; all messages from anc(m) that are not <a class="reference internal" href="02-consistency.html#full-ack"><span>fully-acked</span></a> alongside m. So no-one will ever see messages out-of-order, thus
+avoiding buffering. This exists already as an ad-hoc practice in email, where
+often people leave a quoted parent in the body of their own message.</p>
+<p>This is not a full replacement for a reliable transport - if unacked, packets
+get larger and larger, and the ability to deliver them in one piece effectively
+becomes a reliability problem. However, it could greatly improve the buffer
+waiting period for the majority of unreliable cases, and does not require any
+complex behaviour on the part of the always-online store-and-forward server.</p>
+<p>Other approaches forfeit reliability, and display messages immediately upon
+receipt even if received out-of-order. Such strategies necessarily break our
+strong ordering property which we consider critical, so we won&#8217;t discuss them
+further here - but see <a class="reference internal" href="../appendix/04-extras.html#consistency-without-reliability"><span>Consistency without reliability</span></a> for a more
+detailed exploration down this path.</p>
+</div>
+<div class="section" id="the-importance-of-strong-ordering">
+<h2>The importance of strong ordering<a class="headerlink" href="#the-importance-of-strong-ordering" title="Permalink to this headline">¶</a></h2>
+<p>It is common for messages to depend on context for their precise meaning, in
+both natural and computer languages; delivering such messages out-of-order is
+not even <em>semantically correct</em>. We conjecture that these context-dependent
+messages are a majority, based on briefly scanning our own mailboxes and thread
+histories. One might argue that humans are pretty good at reconstructing the
+order ourselves, but this places an extra burden on the user.</p>
+<p>Some have argued that strong ordering is not important for asynchronous and/or
+high-latency use cases, and therefore buffering is not worth the supposed UX
+cost. But receiving messages out-of-order is <em>itself a UX cost</em>. Futher, strong
+ordering may not be important in some cases, but this is definitely not always
+true - we can imagine scenarios where critical meetings might take place over
+several days, where integrity is more important than timeliness. Therefore, we
+think it&#8217;s prudent to prioritise achieving strong security then try to optimise
+the UX around this, rather than vice-versa.</p>
+<p>Generally, even asynchronous transports are mostly reliable - otherwise they
+would have no users. Now, let&#8217;s consider this minority case where out-of-order
+delivery might actually occur. Suppose Alice sends message (1) then (2), and
+Bob&#8217;s machine receives (2) after time <em>t</em>. The only case where Bob would prefer
+to be shown (2) before/without (1) being available, is if (2) does not require
+(1) to be understood correctly. As previously conjectured, we assume this is a
+minority (of an outer minority). Then, we have the following cases:</p>
+<ol class="loweralpha simple">
+<li>Bob receives (1) after a further time <em>t&#8217;</em> &lt; <em>t</em>.</li>
+<li>Bob receives (1) after a further time <em>t&#8217;</em> &gt; <em>t</em>.</li>
+<li>Bob doesn&#8217;t receive (1) at all, after some timeout <em>T</em>.</li>
+</ol>
+<p>We argue that most users won&#8217;t notice (a), that (b) and (c) are more problems
+of the transport that incentivises users towards better transports regardless
+of whether buffering is done, and that (c) can further be effectively handled
+under our system via timeouts and by restarting the session, such as described
+in <a class="reference internal" href="../hci.html#hci-ordering"><span>Messages received out-of-order</span></a>.</p>
+<p>One might argue that scenarios where strong ordering is security-critical is
+also a minority, but we feel it&#8217;s better to achieve this much-needed security
+for this minority, than to achieve slightly more convenience for another
+less-needy minority.</p>
+<p>TODO: describe a hybrid scheme, using lossy ratchets to derive a &#8220;session key&#8221;,
+and using this as the long-term key (instead of the real long-term key) in a
+strongly-ordered ratchet. this prevents &#8220;drop attacks&#8221; from forcing users to
+repeatedly use their long-term key for messaging material.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Ordering</a><ul>
+<li><a class="reference internal" href="#data-structures">Data structures</a><ul>
+<li><a class="reference internal" href="#partial-orders">Partial orders</a></li>
+<li><a class="reference internal" href="#causal-orders">Causal orders</a></li>
+<li><a class="reference internal" href="#invariants">Invariants</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#enforcement">Enforcement</a><ul>
+<li><a class="reference internal" href="#detecting-transport-attacks">Detecting transport attacks</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#buffering-and-asynchronous-operation">Buffering and asynchronous operation</a></li>
+<li><a class="reference internal" href="#the-importance-of-strong-ordering">The importance of strong ordering</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="index.html"
+                        title="previous chapter">Causal ordering</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="02-consistency.html"
+                        title="next chapter">Consistency</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/causal/01-ordering.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="02-consistency.html" title="Consistency"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="index.html" title="Causal ordering"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" >Causal ordering</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

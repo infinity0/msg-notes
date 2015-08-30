@@ -1,0 +1,234 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>User interface and workflows &mdash; msg-notes 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="msg-notes 0.0.0 documentation" href="../index.html" />
+    <link rel="up" title="Causal ordering" href="index.html" />
+    <link rel="next" title="Greeting protocols" href="../greet.html" />
+    <link rel="prev" title="Applications" href="06-application.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../greet.html" title="Greeting protocols"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="06-application.html" title="Applications"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Causal ordering</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="user-interface-and-workflows">
+<h1>User interface and workflows<a class="headerlink" href="#user-interface-and-workflows" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="displaying-a-causal-order">
+<h2>Displaying a causal order<a class="headerlink" href="#displaying-a-causal-order" title="Permalink to this headline">¶</a></h2>
+<p>It&#8217;s unclear the &#8220;best&#8221; way to draw a causal order - there are many layout
+algorithms for general DAGs, that optimise for different aims. One approach we
+believe is suited for group messaging applications, is to convert the causal
+order into a total order (a linear sequence). These are simple to display, and
+intuitive as a human interface for our scenario. To be clear, this artifical
+order is only used for display; the core system, responsible for security
+properties, works entirely and directly on the causal order.</p>
+<p>Our first conclusion is that any linear order must not be the <em>only</em> interface
+shown to a user. This is because <em>all</em> linear conversions are open to context
+rebinding. The simplest case of a non-total causal order is G = (a →
+o ← b). WLOG suppose that our conversion turns G into (o, a, b) for
+some user. Given only this information in a display, they cannot distinguish
+(o, a) from (a, b) - yet a is not a real parent of b. This might lead to an
+attack - if one user sees (o) and has a reasonable expectation that someone
+will reply (b), then they may say (a) in the hope that (b) will be linearised
+after it, rebinding its context.</p>
+<p>To protect against this, implementions <em>must</em> distinguish messages whose pre(m)
+does not equal the singleton set containing the preceding message in the total
+order; and <em>should</em> provide a secondary interface that shows the underlying
+causal order. This may be implemented as parent reference annotations, hover
+behaviour that highlights the real parents, or some other UX innovation. For
+example:</p>
+<div class="line-block">
+<div class="line">Alice: innocent question?</div>
+<div class="line">Chuck: incriminating question?</div>
+<div class="line">Bob: innocent answer! [2]</div>
+</div>
+<p>The [2] means &#8220;the last message(s) the sender saw was the 2nd message above
+this one&#8221;. Messages without annotations are implicitly [1] - this has the nice
+advantage of looking identical to the unadorned messages of a naive system that
+does not guarantee causal order. In practise, only a minority of messages need
+to be annotated as above; we believe this is acceptable for usability.</p>
+<p>TODO
+- could minor-warn/notice for messages that are &#8220;badly-ordered&#8221;, or omit annotations for low numbers</p>
+<p>There are several caveats when selecting a linear conversion, and we need to
+consider the trade-offs carefully. Let us introduce a few properties that would
+be nice to achieve:</p>
+<ul class="simple">
+<li>globally-consistent / canonical: the conversion outputs the same total order
+for every user, given the same causal order input</li>
+<li>append-only: it does not need to insert newly-delivered messages (from the
+causally-ordered input) into the middle of a previous totally-ordered output.
+In a real application the user only sees the last few messages in the
+sequence, and earlier ones are &#8220;beyond the scroll bar&#8221;, so messages inserted
+there may never be seen.</li>
+<li>responsive: it accepts all possible causal orders and may work on them
+immediately, without waiting for any other input</li>
+</ul>
+<p>Unfortunately, we cannot achieve all three at once. Suppose we can. WLOG
+suppose our conversion turns G (from above) into (o, a, b) for all users. If
+one user receives (o ← b), and does not receive (a) for a long time,
+a responsive conversion must output (o, b). But then when they finally receive
+(a), they will need to insert this into the middle of the previous output.</p>
+<div class="section" id="delivery-order">
+<h3>Delivery order<a class="headerlink" href="#delivery-order" title="Permalink to this headline">¶</a></h3>
+<p>We believe that global consistency is the least important out of the three
+properties above, and therefore sacrificing it is the best option. It&#8217;s
+questionable that it gains us anything - false-but-apparent parents are not
+semantic, so it&#8217;s not important if they are different across users. As noted
+above, we ought to have a secondary interface to indicate the real causal order
+<em>anyway</em>, to guard against context rebinding.</p>
+<p>A linear conversion follows quite naturally from topics already discussed: the
+order in which we deliver messages (for any given user) is a total order, being
+a topological sort of the causal order. It is practically free to implement -
+when the engine delivers a new message, we immediately append it to the current
+display, and record the index for later lookup. This conversion is responsive
+and append-only, but not globally consistent. It is also nearly identical to
+existing chat behaviours, save for the buffering of dangling messages. <a class="footnote-reference" href="#nres" id="id1">[1]</a>
+Given its simplicity and relatively good properties, we recommend this as the
+default for implementors.</p>
+<p>Another approach achieves global consistency, but sacrifices one of the other
+properties: bounce all messages via a central server, which dictates the
+ordering for everyone. This strategy is popular with many existing non-secure
+messaging systems. If we embed the causal order, we can re-gain end-to-end
+security, and protect against the server from violating causality or context.
+Then, we must either sacrifice responsiveness by waiting until the server has
+reflected our message back to us before displaying it, or sacrifice append-only
+and be prepared to insert others&#8217; messages before messages that we sent and
+displayed immediately.</p>
+<p>In either case, we still need <em>another mechanism</em> to ensure that the server is
+providing the same total ordering to everyone, the whole point of doing this in
+the first place. TODO: outline a mechanism for this. Or, we could omit this
+mechanism and fall back to &#8220;delivery order&#8221; as above; then &#8220;global consistency&#8221;
+would be achieved on a best-effort basis, relying on the server being friendly.</p>
+<table class="docutils footnote" frame="void" id="nres" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>One may argue that due to this buffering, we are sacrificing
+responsiveness; however there is no <em>additional</em> waiting beyond what is
+necessary in order to achieve causal consistency - as discussed before,
+sacrificing the latter results in less security and greater complexity.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="server-dictated-order">
+<h3>Server-dictated order<a class="headerlink" href="#server-dictated-order" title="Permalink to this headline">¶</a></h3>
+<p>TODO</p>
+<p>See mpCAT.</p>
+</div>
+</div>
+<div class="section" id="others">
+<h2>Others<a class="headerlink" href="#others" title="Permalink to this headline">¶</a></h2>
+<p>How to display warnings etc.</p>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">User interface and workflows</a><ul>
+<li><a class="reference internal" href="#displaying-a-causal-order">Displaying a causal order</a><ul>
+<li><a class="reference internal" href="#delivery-order">Delivery order</a></li>
+<li><a class="reference internal" href="#server-dictated-order">Server-dictated order</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#others">Others</a></li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="06-application.html"
+                        title="previous chapter">Applications</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="../greet.html"
+                        title="next chapter">Greeting protocols</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/causal/07-interface.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../greet.html" title="Greeting protocols"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="06-application.html" title="Applications"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" >Causal ordering</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

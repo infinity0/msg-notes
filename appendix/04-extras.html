@@ -1,0 +1,302 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Extra topics &mdash; msg-notes 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="msg-notes 0.0.0 documentation" href="../index.html" />
+    <link rel="up" title="Appendices" href="index.html" />
+    <link rel="next" title="Hybrid ordering" href="05-hybrid.html" />
+    <link rel="prev" title="Pseudocode" href="03-pseudocode.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="05-hybrid.html" title="Hybrid ordering"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="03-pseudocode.html" title="Pseudocode"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Appendices</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="extra-topics">
+<h1>Extra topics<a class="headerlink" href="#extra-topics" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="defining-message-identifiers">
+<span id="encoding-message-identifiers"></span><h2>Defining message identifiers<a class="headerlink" href="#defining-message-identifiers" title="Permalink to this headline">¶</a></h2>
+<p>We need message identifiers (mIds) to be pre-image and 2nd-pre-image resistant:</p>
+<ul class="simple">
+<li>for a given id, nobody can forge a message with the same id</li>
+<li>for a given message, nobody can forge another message with the same id</li>
+</ul>
+<p>Hash functions are designed to (hopefully) have these properties. So a simple
+and easy-to-implement definition for an mId is to simply hash the ciphertext.
+There are some potential issues with this approach:</p>
+<ul class="simple">
+<li>It assumes there is exactly one ciphertext per message that is sent to and
+verified by every recipient. However, some cryptographic schemes may require
+that different recipients verify <em>different</em> ciphertext e.g. &#8220;peer-to-peer&#8221;
+or &#8220;pairwise&#8221; schemes where each pair within the group shares a MAC key.</li>
+<li>Anyone who sees this blob (including network attackers) can calculate the
+message id. Nothing we have mentioned in this series of articles <em>requires</em>
+mIds to be secret; but it may be that an application that is built on top of
+our ideas would find it convenient to have this security property.</li>
+</ul>
+<p>Therefore, we also look at more general and flexible ways of defining a mId.
+These are more complex to implement, but have less caveats when deployed.</p>
+<p>To start with, even if each message has multiple ciphertexts, by definition it
+must have a single &#8220;plain content&#8221; that is identical across recipients. This
+includes data <em>and</em> metadata such as parent mIds, author identifiers (though
+this could be implicit in the authentication mechanism) and recipient
+identifiers (though this could be implicit in the encryption mechanism).</p>
+<p>We should not hash this plain content directly - it may have low entropy so
+that potential hashes can be pre-calculated by an attacker. <a class="footnote-reference" href="#nhash" id="id1">[1]</a> What we
+do instead is to hash a secret together with this plain content. Since we are
+encrypting the content, the encryption key would be a suitable secret:</p>
+<blockquote>
+<div>mId(m) := H(k[m] || content)</div></blockquote>
+<p>If our encryption scheme does not naturally have a single secret key for each
+message (e.g. in a &#8220;peer-to-peer&#8221; scheme, we encrypt separately to each
+recipient), we can tweak it so: instead of calculating GroupEnc(recipients,
+payload) directly, we generate a random k[m] and calculate GroupEnc(recipients,
+k[m]) and Enc(k[m], payload), where Enc is a normal single-recipient encryption
+scheme. The k[m] may then be used to calculate mId as above. This tweak should
+be possible regardless of the implementation or state of GroupEnc.</p>
+<table class="docutils footnote" frame="void" id="nhash" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>As previously, this is not a problem with anything we have directly
+mentioned, but it places unnecessary caveats on anyone wishing to build on
+top of it. For example, we may wish to be free to let new joiners see old
+hashes, but without letting them see the contents of older messages.</td></tr>
+</tbody>
+</table>
+<div class="section" id="author-specific-identifiers">
+<span id="author-specific-message-identifiers"></span><h3>Author-specific identifiers<a class="headerlink" href="#author-specific-identifiers" title="Permalink to this headline">¶</a></h3>
+<p>As mentioned before, seeing a message is not the only way that a member might
+come to know its mId. Other members might reveal it, by referring to it in the
+&#8220;parent mIds&#8221; part of their own messages. So, knowing an mId does not <em>prove</em>
+that they saw this message. As also explained before, we do not think that this
+is a security problem.</p>
+<p>However, it is <em>possible</em> to devise a scheme to &#8220;declare parent messages&#8221; that
+does not enable others to fake their own declarations. The idea is simple -
+that parent mId declarations should only be valid for the member giving the
+declaration. A simple way to accomplish this is to define:</p>
+<blockquote>
+<div>umId(m, u) := H(k[m] || content || u)</div></blockquote>
+<p>If member u wants to declare that its next message has parent m, it declares
+umId(m, u) instead of mId(m). One can calculate umId(m, u) if one has seen the
+message, and can verify others&#8217; values; but one cannot calculate this if one
+hasn&#8217;t seen the message, nor re-use others&#8217; values in a fake declaration.</p>
+<p>However, bear in mind that we haven&#8217;t had this &#8220;security property&#8221; nor &#8220;threat&#8221;
+(of fake parent declarations) in mind when designing other aspects of the
+system, so the above scheme may not be sufficient (but it is necessary) to
+protect against this &#8220;threat&#8221; in the overall system.</p>
+<p>For example, we define acks to be transitive - referring to a message implies
+that you&#8217;ve also seen its ancestors, without needing to refer to them directly.
+This bypasses much of the &#8220;protection&#8221; of the above scheme. We could fix this,
+by e.g. having a member-specific &#8220;all messages acked&#8221; hash that attests (in a
+non-transferrable way, like umId) to all messages that we expect to be acking
+with this current message, that can be verified by others. But this is getting
+very complex quite quickly, for questionable gain, so we&#8217;ll stop here and leave
+further progress along these lines as an exercise to the reader.</p>
+</div>
+</div>
+<div class="section" id="consistency-without-reliability">
+<span id="id2"></span><h2>Consistency without reliability<a class="headerlink" href="#consistency-without-reliability" title="Permalink to this headline">¶</a></h2>
+<p>Against our main strong ordering proposal, here we&#8217;ll look at how to construct
+a consistency system that doesn&#8217;t assume a reliable transport. (Spoiler: we
+don&#8217;t have a good solution to this problem, but we&#8217;ll talk about the issues.)
+Fundamentally, transcript consistency cannot be guaranteed since we accept that
+members might miss any subset of messages. However, we can still try to achieve
+consistency of individual messages - i.e. if Alice sends me a message that she
+claims was also sent to X, then I should verify that X indeed received this.</p>
+<p>Suppose Alice sends messages (1) and (2) to Bob. The transport is unreliable
+and Bob receives (2), and we don&#8217;t want to assume he will eventually receive
+(1). At this moment, we can still indicate all necessary information to the UI:
+on Alice&#8217;s side, Bob hasn&#8217;t acked her messages yet; on Bob&#8217;s side, he has
+received (2) which refers (optionally) to the missing parent (1).</p>
+<p>Suppose then Bob wants to send message (3). Achieving consistency is based on
+acking what we have seen so far, which means we need a way to <em>represent</em> this
+information. By definition, our previous assumption of strong ordering, means
+that we only ever need to represent &#8220;we have seen everything up to and
+including X&#8221;, where in this case X = {2}.</p>
+<p>By contrast, without a reliability assumption, we would need to represent
+arbitrary subsets of the transcript, e.g. in this case &#8220;seen (2) but not (1)&#8221;.
+As a strawman proposal, this is possible simply by explicitly enumerating the
+individual messages we have seen, but this means that every member has to
+explicitly transmit every message ID, which is not very efficient. This could
+be an option for high-bandwidth unreliable transports however.</p>
+<p>One strategy has been to work towards a system that can detect inconsistency,
+yet may be unable to recover from specific inconsistent scenarios (since this
+is unnecessary if we are OK with a unreliable transport), in the hope that such
+a system would be simpler than strong ordering and not require buffering.</p>
+<p>Nothing concrete has thus far been proposed, but we believe the goal itself to
+be naive. In unreliable transports, drops and out-of-order deliveries happen
+fairly frequently by definition, so users will often get false positive
+&#8220;inconsistency&#8221; warnings, training them to ignore such warnings and reducing
+their effectiveness.</p>
+<p>We further suspect that such strategies would be able to unable to switch an
+inconsistent to a consistent state, when out-of-order delivery occurs but all
+messages are eventually received (i.e. consistency recovers when the transport
+recovers), whereas buffering would be able to achieve this.</p>
+</div>
+<div class="section" id="timestamps">
+<h2>Timestamps<a class="headerlink" href="#timestamps" title="Permalink to this headline">¶</a></h2>
+<p>We outline some techniques that try to determine clock skew, and detect
+severely incorrect claims - but acceptance of a timestamp should not be treated
+with substantial authenticity by any higher-lever application.</p>
+<div class="section" id="semantics">
+<h3>Semantics<a class="headerlink" href="#semantics" title="Permalink to this headline">¶</a></h3>
+<p>Define:</p>
+<p>Declared vs local timestamps</p>
+<p>Send vs recv timestamps
+- recv might be either &#8220;delivered&#8221; vs &#8220;inferred-seen&#8221;, elaborate
+- the latter is also a total ordering like &#8220;delivery order&#8221; but would cause</p>
+<blockquote>
+<div>UI re-drawing.</div></blockquote>
+<ul class="simple">
+<li>the latter probably more suitable for inferring remote timestamps</li>
+</ul>
+<p>Some properties of these, assuming arbitrary delays in the network. Assumes
+&#8220;global time&#8221; exists, i.e. not relativistic.</p>
+</div>
+<div class="section" id="minimum-bound">
+<h3>Minimum bound<a class="headerlink" href="#minimum-bound" title="Permalink to this headline">¶</a></h3>
+<p>Minimum local send timestamp (mlst)</p>
+<p>Recursive definition of mlst, based on dst from others, and lst (== dst) of self.</p>
+<p>Consequences of false declarations:</p>
+<ul>
+<li><p class="first">dst too low -&gt; as if network had much higher latency.
+mlst estimates might too generous, not such a big deal. it might even be
+unaffected since it&#8217;s calculated as max() of information from multiple people.</p>
+</li>
+<li><p class="first">dst too high
+- if no-one notices -&gt; no problem, as if network had much lower latency -</p>
+<blockquote>
+<div><p>actually a good thing!</p>
+</div></blockquote>
+<ul>
+<li><p class="first">if someone notices, send a &#8220;bad timestamp&#8221; message, emit a UI warning &#8220;mlst
+appears to be from the future; mlst calculations of later messages may also
+be affected by this&#8221;
+- diagram of example situation
+- how to handle (might be innocent)? getting quite complex, leave for</p>
+<blockquote>
+<div><p>future research</p>
+</div></blockquote>
+</li>
+</ul>
+</li>
+</ul>
+<p>Could be integrated into freshness checks, but complexity probably not worth it.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Extra topics</a><ul>
+<li><a class="reference internal" href="#defining-message-identifiers">Defining message identifiers</a><ul>
+<li><a class="reference internal" href="#author-specific-identifiers">Author-specific identifiers</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#consistency-without-reliability">Consistency without reliability</a></li>
+<li><a class="reference internal" href="#timestamps">Timestamps</a><ul>
+<li><a class="reference internal" href="#semantics">Semantics</a></li>
+<li><a class="reference internal" href="#minimum-bound">Minimum bound</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="03-pseudocode.html"
+                        title="previous chapter">Pseudocode</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="05-hybrid.html"
+                        title="next chapter">Hybrid ordering</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/appendix/04-extras.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="05-hybrid.html" title="Hybrid ordering"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="03-pseudocode.html" title="Pseudocode"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" >Appendices</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

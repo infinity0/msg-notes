@@ -1,0 +1,693 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Hybrid ordering &mdash; msg-notes 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="msg-notes 0.0.0 documentation" href="../index.html" />
+    <link rel="up" title="Appendices" href="index.html" />
+    <link rel="prev" title="Extra topics" href="04-extras.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="04-extras.html" title="Extra topics"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Appendices</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="hybrid-ordering">
+<h1>Hybrid ordering<a class="headerlink" href="#hybrid-ordering" title="Permalink to this headline">¶</a></h1>
+<p>Causal orders have some nice properties explained elsewhere, but are also hard
+to implement correctly when not everyone is allowed to see the full history.
+(At the time of writing, we don&#8217;t have a full solution for this yet.)</p>
+<p>One alternative is to have a total order for membership operations, while
+leaving messages to be in a causal order. Here, we present a scheme for this
+that requires no extra client packets, but does require one extra round of
+latency - the minimum necessary for a total order that preserves context.</p>
+<p>The scheme only applies to certain membership operations packets - for example,
+messages in the causal order of a session transcript may instead be sent over a
+different transport that offers more protection against metadata analysis. Such
+hybrid strategies may be researched in further depth elsewhere.</p>
+<div class="section" id="models-and-assumptions">
+<h2>Models and assumptions<a class="headerlink" href="#models-and-assumptions" title="Permalink to this headline">¶</a></h2>
+<p>Before we begin to describe our scheme, we&#8217;ll clarify our assumptions about the
+context that we&#8217;re working in. The models we define are not completely formal,
+but should be precise enough to understand the rest of the chapter with.</p>
+<div class="section" id="group-transport-channel">
+<h3>Group transport channel<a class="headerlink" href="#group-transport-channel" title="Permalink to this headline">¶</a></h3>
+<p>We model the transport channel as a globally consistent sequence of events,
+where each event at index i is associated with a set of <em>channel members</em>,
+denoted by mem[i]. An event may be a packet <a class="footnote-reference" href="#npket" id="id1">[1]</a> with mem[i] = mem[i-1],
+or else it is a member-change, that explicitly encodes a change to the channel
+membership. A packet is visible to mem[i], and a member-change is visible to
+both mem[i-1] and mem[i]. (The indexes are only indicative, for the purposes of
+this document, and need not be visible to the members nor otherwise exposed.)</p>
+<p>From each member m&#8217;s point of view, they see a member-change that adds them to
+the channel, some packets or member-changes <em>not</em> acting on themself, then a
+member-change that removes them from the channel. The next event, if any, would
+be a member-change that adds them to the channel again, and this cycle can
+repeat any number of times.</p>
+<p>These events need not be authenticated, at this layer, between the members.
+Further, this model only constrains events <em>received</em> by members, and is
+neutral to how events <em>sent</em> by members are handled. For example, a member may
+send a packet P immediately after he receives event i with mem[i] = M, i.e.
+intending to send P to M, but P may be added to the channel event sequence at a
+later index j &gt; i+1 where mem[j] ≠ M. Our scheme may be viewed as a
+user-level (end-to-end) method of addressing these security deficiencies of the
+transport, which cannot be satisfied on the transport layer itself.</p>
+<p>It is not necessary to specify exactly the mechanism for achieving this model.
+However, a typical scenario would be a dumb server that accepts all events from
+all clients, and echoes them back reliably to everyone in the same total order.
+This is quite standard for existing instant messaging protocols such as XMPP,
+and requires no extra logic on the server side. Therefore, clients can
+transparently run our scheme on top of existing infrastructure. <a class="footnote-reference" href="#nprot" id="id2">[2]</a></p>
+<p>What we <em>do</em> expect however, is that the mechanism takes responsibility for
+delivering, reliably and in a consistent order, events to its relevant visible
+users. We do not <em>assume</em> this to be the case; any deviation from it is
+detected by our scheme, and regarded as incorrect behaviour of the mechanism
+(e.g. the server). But in the case where they are met, the scheme works under
+these assumptions to be efficient and robust.</p>
+<p>For our hybrid order scheme, we only require that certain packets are sent over
+this channel, i.e. initial packets and final-candidate packets, defined later.</p>
+<table class="docutils footnote" frame="void" id="npket" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>We use the term &#8220;packet&#8221; to refer to transport-level packets; the
+term &#8220;message&#8221; refers specifically to verified-decrypted messages, that
+comprise the causal order history graph.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="nprot" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[2]</a></td><td>Note that some protocols may use different concrete sequences of
+protocol &#8220;event&#8221; packets, but logically these are equivalent to the above
+model. For example, in XMPP an &#8220;I entered the channel&#8221; event, in practise
+consists of many enter events for each member in the channel, from just
+before I enter it, then a single enter-event of me entering the channel.
+One can write software adapters to translate between these differences.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="group-membership-operation">
+<h3>Group membership operation<a class="headerlink" href="#group-membership-operation" title="Permalink to this headline">¶</a></h3>
+<p>We model the operation as a process G on the (logical) session membership. G is
+initialised from some previous state - either a null state, or the result of
+the previous operation - that encodes the previous session membership, M&#8217;; and
+some initial packet pI received from the channel, sent by a member of M&#8217;, which
+defines the intended next session membership, M. <a class="footnote-reference" href="#noini" id="id3">[3]</a></p>
+<p>Depending on the packets received by G, the operation may finish with success
+(&#8220;completes&#8221;), upon which the session membership atomically changes to M and
+the result state is stored for the next operation; or with failure (&#8220;fails&#8221;),
+upon which it remains at M&#8217; and all temporary state related to G is destroyed.</p>
+<p>We assume that G handles authentication and ordering of its own packets, that
+only fresh packets (relative to pI) are accepted, and that packets will not be
+misinterpreted to be part of another operation, that has a different initial
+packet. If the operation finishes, then this is authentic; if it completes,
+then any resulting state is also authentic. G defines the subject of these
+authentications - e.g. by all members in M, or only by the initiator. We
+assume that the people who choose which particular G to plug into our scheme,
+make a sensible decision that fits their security requirements.</p>
+<p>A corollary is that packets that belong to different operations have different
+content (i.e. are unique). This should not be difficult; indeed otherwise it
+would be susceptible to replay attacks. Duplicate packets should be ignored.</p>
+<p>For a general G, the packets required to finish the operation may be ordered
+differently across members. For example, in a final round where everyone must
+respond to previous values, it doesn&#8217;t matter what order we receive these in;
+G can still complete in the same way for everyone.</p>
+<p>However, for our scheme to remain relatively simple, we place an additional
+restriction. Define a &#8220;final-candidate&#8221; packet as one which <em>may</em> finish G in
+some linearisation of the causal order of G&#8217;s packets. Then, we require that
+these packets must be sent over the group channel, as opposed to out-of-band.
+We use this fact to define an implicit agreement mechanism, so that members can
+determine which particular packet finishes G. We call this final packet pF.
+Given a channel event sequence that &#8220;almost&#8221; finishes G, there may be several
+possible packets appended to this, that could each actually finish G; we call
+these &#8220;final packet proposals&#8221;; the agreement mechanism defines which one is
+actually accepted, and hence the result of the operation.</p>
+<p>As with everything in the channel, pF is defined only after the packet is
+<em>received</em>. For example, suppose we have a G that expects a final round of 3
+packets {F[A], F[B], F[C]}, and C receives F[A] and F[B]. Now, she has all
+information needed to generate F[C] and complete the operation, but she must
+not execute the completion yet, since there may be an fail packet A added to
+the channel event sequence <em>before</em> F[C]. In this case, everyone including C
+must fail G, and pF is A and not F[C].</p>
+<p>In terms of who is able to decode and identify initial or final packets, we
+assume that:</p>
+<ul>
+<li><div class="first line-block">
+<div class="line">for all pI with a given prev_pF: only { all of M&#8217;|M } can identify it, or</div>
+<div class="line">for all pI with a given prev_pF: everyone can identify it</div>
+</div>
+</li>
+<li><div class="first line-block">
+<div class="line">for all pF with a given prev_pI:</div>
+<div class="line">if pF success: only { all of M&#8217;|M } or only { all of M } can identify it</div>
+<div class="line">if pF failure: only { all of M&#8217;|M } can identify it</div>
+</div>
+</li>
+</ul>
+<p>No other partitions are allowed, i.e. a process G may not be such that e.g. for
+a pIa with a given prev_pF, M&#8217;|M can identify it, but for a pIb on the same
+prev_pF, everyone can identify it; nor that e.g. some members of X := M&#8217;-M can
+identify a pF, but others cannot.</p>
+<p>For the pI case, the arrangement of the { or, for all } quantifiers simplify
+the cases we have to analyse. For the pF case, the arrangement is more complex,
+but the simpler form would be <em>too</em> restrictive, as explained later. Typical
+real-world instances of G already fit these constraints; we just specify them
+more precisely here to benefit further discussions. These constraints are
+justified further in <a class="reference internal" href="#hybrid-partial-vis"><span>Partial visibility</span></a>.</p>
+<table class="docutils footnote" frame="void" id="noini" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[3]</a></td><td>If the membership protocol supports outsider initiation (i.e. join
+as well as invite), it is the <em>reply</em> to the join request that is treated
+as the pI within our scheme here. This fits our requirement that pI be
+authored by member of the previous session (if any), who knows the previous
+state associated with it.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section" id="ordering-and-consistency">
+<h2>Ordering and consistency<a class="headerlink" href="#ordering-and-consistency" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="context-preservation">
+<span id="hybrid-context-preserve"></span><h3>Context preservation<a class="headerlink" href="#context-preservation" title="Permalink to this headline">¶</a></h3>
+<p>By our assumptions of G, the context of a final packet is already preserved,
+since G will only interpret it within the scope of the initial packet. To
+preserve the context of an initial packet, we add to it explicit references to
+that context, i.e. the following information:</p>
+<dl class="docutils">
+<dt>prev_pF:</dt>
+<dd>packet-id (defined later) of last accepted pF</dd>
+<dt>pmId:</dt>
+<dd>latest message-ids seen, in sub-session derived from pF</dd>
+</dl>
+<p>This lets us convey our context to R := M&#8217;&amp;M, the members that remain in the
+session. It is unnecessary to convey it to excluded members, since they are no
+longer part of the session; nor included members, since the context is not
+visible to them. <a class="footnote-reference" href="#npctx" id="id4">[4]</a> If there was no previous sub-session, then we have
+neither context, nor anyone to convey it to (since R = ∅), so we can
+set a new random value for pF (for uniqueness, which might be useful later),
+and set pmId = ∅ too.</p>
+<p>These references, of course, must be authenticated by the operation initiator.
+If G supports &#8220;additional authenticated data&#8221;, we can simply use this feature.
+Otherwise, perhaps such a feature can be added. For example, some protocols
+retroactively authenticate the protocol version to prevent downgrade attacks;
+the same mechanism could be adapted to authenticate arbitrary data. Typically
+this is not private, but as argued elsewhere, our scheme does not try to
+protect the privacy of the existence of session membership changes, and these
+references are meant to be hashes that don&#8217;t leak information about the content
+of the session.</p>
+<p>If it is not feasible to achieve in-operation authentication, a fallback is to
+resend this information as part of a message in the newly-created authenticated
+session. Others should expect this message, abort the session if it is not
+received within some timeout, or verify it against the older unauthenticated
+claims if it is received. This keeps the membership operation component more
+decoupled from the rest of the system. However, it would take longer to achieve
+our desired security property.</p>
+<table class="docutils footnote" frame="void" id="npctx" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id4">[4]</a></td><td>Another option is to refer to earlier context, from when they were
+last in the session. There are many issues to be researched here, e.g. what
+if they were previous in the session, but the inviter does not know this.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="agreement">
+<h3>Agreement<a class="headerlink" href="#agreement" title="Permalink to this headline">¶</a></h3>
+<p>Now that we have context preserving pI and pF packets, we need a way select a
+subset of these that forms a total order. <a class="footnote-reference" href="#ncord" id="id5">[5]</a> Equivalently, we need an
+agreement algorithm, consistent across all members, to accept a single pI/pF
+that follows a pF/pI, and reject other proposals.</p>
+<p class="graphviz">
+<img src="../_images/graphviz-5c08a218d3ee865d9e75e67a462ba21693f67ab4.png" alt="digraph hybrid_agreement {
+rankdir=RL;
+node [height=0.5, width=0.5, style=filled, label=&quot;&quot;];
+i1a [fillcolor=&quot;#66ff66&quot;, label=&quot;+a&quot;];
+f1a [fillcolor=&quot;#ff6666&quot;, label=&quot;s&quot;];
+f1b [fillcolor=&quot;#66ff66&quot;, label=&quot;f&quot;];
+f1c [fillcolor=&quot;#ff6666&quot;, label=&quot;f&quot;];
+i2a [fillcolor=&quot;#ff6666&quot;, label=&quot;+b&quot;];
+i2bf [fillcolor=&quot;#66ff66&quot;, label=&quot;-c,s&quot;];
+i3a [fillcolor=&quot;#66ff66&quot;, label=&quot;+b&quot;];
+f2a [fillcolor=&quot;#ff6666&quot;, label=&quot;f&quot;];
+f1a -&gt; i1a;
+f1b -&gt; i1a;
+f1c -&gt; i1a;
+i2a -&gt; f1b;
+i2bf -&gt; f1b;
+f2a -&gt; i2bf;
+i3a -&gt; i2bf;
+}" />
+</p>
+<p>The above diagram helps visualise this. Nodes labelled &#8220;-m&#8221; or &#8220;+m&#8221; are pI
+packets that include or exclude a member from the session; and those labelled
+&#8220;s&#8221; or &#8220;f&#8221; are success or failure pF packets linked to that operation. Green
+nodes are accepted proposals, and all other nodes are red, meaning a rejected
+proposal. For every accepted proposal, there is at most one accepted proposal
+that references it. In the above example, a proposal to include <em>a</em> is accepted
+but the operation fails, and is followed by a proposal to exclude <em>c</em> which is
+accepted and succeeds immediately without requiring more packets; further
+proposals to fail &#8220;-c&#8221; are rejected, and then a second proposal to include <em>b</em>
+is accepted after the first one was rejected earlier.</p>
+<p>Our agreement algorithm, ignoring a few special cases mentioned later, is as
+follows: for a given parent pF/pI, we accept the first pI/pF proposal in the
+channel event sequence that references it, except that:</p>
+<dl class="docutils">
+<dt>Rule XP:</dt>
+<dd>We ignore proposals that are added to the channel when the channel membership
+does not include its target membership, i.e. if M ⊈ mem[i].</dd>
+</dl>
+<p>This rule exists because we want everyone in M to reach the same answer. This
+is not possible if some of them are not in the channel when the proposals are
+echoed back. Given this rule, it is therefore wise, <em>before</em> one sends out a
+proposal at index i, to check that M ⊆ mem[i] - though of course this
+does not guarantee that this is actually added to the channel at an index j
+where M ⊆ mem[j].</p>
+<p>We don&#8217;t worry about non-(initial or final-candidate) packets - if any are
+missing from the channel, then G itself decides whether to finish or not.
+Everyone should reach the same conclusion, as long as the transport works
+according to our expectations.</p>
+<p>This should also work in the degenerate case of a 1-packet operation (e.g. with
+a key dictator). Here, a packet is both a pI proposal and a pF that is accepted
+immediately, before futher channel events are processed. Implementors may need
+to handle this specifically; but this should not cause major difficulties.</p>
+<p>The advantage of this agreement algorithm is that it requires no further round
+trips between members, beyond what was going to be sent by G anyway. Members
+must wait one round-trip before they know their proposals are accepted, but
+this is necessary for any total order that preserves context.</p>
+<p>One might argue that, if agreement isn&#8217;t reached, then our consistency checks
+below will emit warnings already - so this complexity is unnecessary. However,
+those checks are meant to detect <em>incorrect behaviour</em> of the transport; but
+concurrency conflicts can happen <em>even when</em> the transport behaves as expected.
+This agreement scheme aims to reduce <em>false negatives</em>, which is vital both for
+a good user experience, and to avoid training users to ignore warnings.</p>
+<p>One attack that a server can execute is to block operations without detection.
+When the victim sends a proposal, the server first passes it out-of-band to a
+co-operating insider who generates a conflicting proposal. Then, it echoes this
+proposal before the victim&#8217;s, causing members to reject the latter. This is all
+within the bounds of normal behaviour of the group transport, so the attack is
+not detectable and therefore a problem. For now, we ignore this, since this
+power is inherent to the idea of a server-dictated total order, and the need to
+have a co-operating insider increases the cost of this attack. Nevertheless,
+this is not ideal, and we welcome suggestions for improvements.</p>
+<table class="docutils footnote" frame="void" id="ncord" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id5">[5]</a></td><td>That is, over the context-preserving ordering relation, based on
+explicit references, not the group channel ordering relation.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="consistency">
+<h3>Consistency<a class="headerlink" href="#consistency" title="Permalink to this headline">¶</a></h3>
+<p>As each member accepts proposals, they calculate a &#8220;chain hash&#8221; (CH) for it:</p>
+<dl class="docutils">
+<dt>pId:</dt>
+<dd>H(packet data||sender||recipients) </dd>
+<dt>CH(pId):</dt>
+<dd>H(CH(pId of previous accepted proposal) || pId || pId-type)</dd>
+</dl>
+<p>We include the (unauthenticated) channel sender and recipients in the hash for
+the packet-id, so that our consistency checks also cover this information. This
+is necessary, because our agreement algorithm uses that information. If we omit
+them, then the transport could claim different memberships to different
+members, which may cause them to reach different results when running the
+algorithm, but still calculate the same packet-id.</p>
+<p>The CH of an accepted proposal packet, as calculated by a member, attests to
+all proposals accepted by them up to and including it. &#8220;pId-type&#8221; attests to
+how they interpret the packet, in case this might be different across members
+depending on local state, environment, etc. Here, we use &#8220;1&#8221; for pI, &#8220;2&#8221; for
+pF, and &#8220;3&#8221; for pI+pF packets.</p>
+<p>As with other things, these may only be calculated when a packet is <em>received</em>
+from the channel. Further, since packet contents are unique, these packet-ids
+are also unique. <a class="footnote-reference" href="#nhash" id="id6">[6]</a> We ignore rejected packets, because we don&#8217;t use
+information contained in them to make decisions; and this also makes things
+easier later when we deal with partial visibility issues.</p>
+<p>For incoming new members to be able to match up with everyone&#8217;s CH values,
+every pI should also contain:</p>
+<dl class="docutils">
+<dt>prev_CH:</dt>
+<dd>chain hash of prev_pF = CH(prev_pF)</dd>
+</dl>
+<p>When an incoming member accepts their first pF, they may read the previous CH
+from this value, trusting it opportunistically until the next consistency
+check. When starting a new session from scratch (so that there is no prev_pF),
+we may use the random prev_pF as mentioned in <a class="reference internal" href="#hybrid-context-preserve"><span>Context preservation</span></a>;
+this should not actually need any specific code to &#8220;just work&#8221;.</p>
+<p>Periodically, everyone authenticates and sends the following information:</p>
+<blockquote>
+<div>( last pId seen, CH(pId) )</div></blockquote>
+<p>This could be done as part of a message in our (authenticated) causal order
+history graph. This essentially corresponds to an &#8220;ack&#8221; that we described
+previously, but for the total order of accepted proposals. Then, we may ensure
+consistency by checking that we receive full-acks for every accepted proposal,
+similar to as described in <a class="reference internal" href="../causal/02-consistency.html"><em>Consistency</em></a>.</p>
+<p>Why is this mechanism necessary? Surely G already authenticates its result
+identically across all members? Well, firstly, we don&#8217;t assume that G does this
+by <em>all members</em>, only by some party that is satisfactory. Secondly, <em>even if</em>
+G does authenticate the result (of a particular pF) by all members, whether it
+is actually accepted by each member, is outside of its control. For example,
+two members may be able to send two different pF proposals, that can each cause
+G to reach different but valid results. With the help of the transport, this
+could be arranged, causing the session to split outside of G&#8217;s control. We
+could specify that G should prevent this, but the property is quite hard to
+define formally. <a class="footnote-reference" href="#ngcon" id="id7">[7]</a> So instead we specify this consistency check, that
+works regardless of the guarantees that G makes.</p>
+<table class="docutils footnote" frame="void" id="nhash" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id6">[6]</a></td><td>Our definition allows an outside observer to potentially calculate
+pIds and CHs. This is not a problem for anything we describe, but may cause
+a problem for applications that build on top of us. One may use a different
+definition, but it would need to be done based on how packets are encoded,
+which is specific to the membership operation. If it is necessary, one may
+adapt <a class="reference internal" href="04-extras.html#encoding-message-identifiers"><span>Defining message identifiers</span></a> to apply instead to this context.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="ngcon" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id7">[7]</a></td><td>We would have to make some statement about the second-to-final
+packet, and how it must depend on all members, or something like that.</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section" id="partial-visibility">
+<span id="hybrid-partial-vis"></span><h2>Partial visibility<a class="headerlink" href="#partial-visibility" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="of-initial-proposals">
+<h3>Of initial proposals<a class="headerlink" href="#of-initial-proposals" title="Permalink to this headline">¶</a></h3>
+<p>Earlier, we required that pI proposals must be identifiable (decodable,
+interpretable) by all of M&#8217;|M (i.e. using any secret information they have) or
+everyone (i.e. without any secret information). Let&#8217;s look at this in more
+detail. We consider the following cases:</p>
+<ol class="arabic simple">
+<li>for all pI with a given prev_pF: only { all of M&#8217; } can identify that pI</li>
+<li>for all pI with a given prev_pF: only { all of M } can identify that pI</li>
+<li>for all pI with a given prev_pF: only { all of M&#8217;|M } can identify that pI</li>
+<li>for all pI with a given prev_pF: everyone can identify that pI</li>
+</ol>
+<p>M&#8217; is specific to the prev_pF and constant across all pI, and M is specific to
+each pI. Other cases are too complex to think about, or trivially useless.</p>
+<p>With (1), the included members, I := M-M&#8217; cannot run the agreement algorithm
+and therefore we require further packets to tell them that they are actually
+supposed to be participating in G. So we forbid this possibility, because we
+are aiming for something with no extra packets. Generally, existing instances
+of G don&#8217;t hide pI from I anyway, so we don&#8217;t lose much with this.</p>
+<p>With (2), different sets of pI (with the same prev_pF) are visible to different
+members, since each pI proposes different X := M&#8217;-M. It does not seem feasible
+to be able to tweak the agreement algorithm to work around this, since there is
+no set of members-who-can-see-a-pI that is constant across all these pI. For
+example, the auto-kick solution suggested in (3) fails because of the lack of a
+constant M&#8217; that is able to derive the same actions to execute. So we forbid
+this possibility as well. TODO: add the session-split example.</p>
+<p>With (3), different sets of pI (with the same prev_pF) are visible to different
+members, since each pI proposes different M. So (across all these pI) different
+members would reach different results for the agreement. To work around this,
+we specify that in this case, after a given pI is accepted by M&#8217;, they must all
+try to kick extra members not in M, and these latter members should interpret
+this as &#8220;another proposal, with the same prev_pF, for a G that does not include
+us, was accepted&#8221;. Unlike in (2), the M&#8217; are constant (being determined by the
+same pF), so this is consistent across all members.</p>
+<p>With (4), this is the simplest case, and we don&#8217;t need to handle it specially,
+but it leaks information about session membership changes. However, arguably,
+in the context of our scheme, this does not cause <em>extra leakage</em> - the server
+has this metadata anyway, in the form of channel membership changes. If we
+require membership changes to be private, we will need to achieve this some
+other way, i.e. not using a hybrid ordering on top of a server transport.
+(TODO: what about group channels that fit our model, but not using a server?)</p>
+</div>
+<div class="section" id="of-final-proposals">
+<h3>Of final proposals<a class="headerlink" href="#of-final-proposals" title="Permalink to this headline">¶</a></h3>
+<p>For the case of pF proposals, we have the similar cases as above, with slightly
+different arrangements of quantifiers. For all pF with a given prev_pI, one of
+the following might apply:</p>
+<ol class="arabic simple">
+<li>only { all of M&#8217; } can identify that pF</li>
+<li>only { all of M } can identify that pF</li>
+<li>only { all of M&#8217;|M } can identify that pF</li>
+<li>everyone can identify that pF</li>
+</ol>
+<p>We can immediately forbid (1) for the same reason as in the previous section,
+and forbid (4) as being unnecessary - nobody outside of M&#8217;|M needs to identify
+pF packets, only pI ones, as per <cite>hybrid-own-enter-channel</cite> - it gives us no
+advantage to (3), and we leak less information that way.</p>
+<p>For a success pF, it is reasonable and common that G has the security property
+that only M may verify (and therefore identify) its final packets. In concrete
+terms, flipping a bit to turn a valid final packet into an invalid one, may be
+indistinguishable to anyone not in M. This is case (2), so we must support it.</p>
+<p>For a failure pF, M&#8217; <em>must</em> be able to identify pF, since they remain in the
+session and will need to refer to this in any subsequent pI proposals. Note
+that this implies that we forbid &#8220;implicit failures&#8221; - e.g. in the &#8220;bit flip&#8221;
+scenario mentioned above, an invalid final packet <em>must not</em> be accepted as a
+failure pF, because it is not identifiable by X := M&#8217;-M. Instead, it should be
+ignored, and a <em>separate</em> failure pF proposal be sent.</p>
+<p>Since different pF are identifiable by different members, we must extend our
+agreement algorithm to ensure everyone still reaches the same conclusion. The
+extension is similar to the one from (3) in the previous section. If a success
+pF is accepted by M, they must all try to kick X, and X should interpret this
+as &#8220;G was completed to exclude us&#8221;. This deals with the case where X receives a
+failure pF after a success pF (that they can&#8217;t identify), which may cause them
+to incorrectly conclude that G failed.</p>
+</div>
+</div>
+<div class="section" id="session-and-channel-interactions">
+<h2>Session and channel interactions<a class="headerlink" href="#session-and-channel-interactions" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="entering-a-channel">
+<h3>Entering a channel<a class="headerlink" href="#entering-a-channel" title="Permalink to this headline">¶</a></h3>
+<p id="hybrid-own-enter-channel">The agreement algorithm described so far (including extensions) for a pI
+assumes that everyone knows the full event sequence from its prev_pF up to it.
+However, this is not the case for new members that entered a channel after the
+prev_pF - they don&#8217;t know if other proposals were sent before they entered.</p>
+<p>As a new member entering the channel, the next pI proposal we see, if it is not
+already ignored due to rule XP, may be divided into a few cases:</p>
+<dl class="docutils">
+<dt>Rule EIO:</dt>
+<dd>It isn&#8217;t trying to include us. Then, we ignore it, but assume that others
+will accept it or have already accepted another packet with the same prev_pF.
+So we store prev_pF and reject any future proposals that reference it.</dd>
+<dt>Rule EII:</dt>
+<dd><p class="first">It is trying to include us, and its prev_pF has not yet been blacklisted by
+rule EIO. Then, we accept it opportunistically:</p>
+<ul class="last simple">
+<li>If we have seen prev_pF, then we know this acceptance is correct.</li>
+<li>Otherwise, this could be incorrect - another proposal that references the
+same prev_pF could have been accepted before we entered the channel. But in
+this case, the server-order consistency check would fail later, or (if G is
+contributive) we would not be able to complete the operation, or someone
+would kick us because we&#8217;re in the channel at an inappropriate time.</li>
+</ul>
+</dd>
+</dl>
+<p>For others that enter the channel:</p>
+<dl class="docutils">
+<dt>Rule ES:</dt>
+<dd>If another member enters outside of a membership operation, notify the local
+user that they would like to join the session.</dd>
+<dt>Rule EO:</dt>
+<dd>If another member enters during a membership operation, then (by rule XP)
+they are not part of the pending new sub-session, so kick them. Optionally,
+notify the local user that they probably want to join the channel, so that
+they can manually invite them.</dd>
+</dl>
+</div>
+<div class="section" id="leaving-a-channel">
+<h3>Leaving a channel<a class="headerlink" href="#leaving-a-channel" title="Permalink to this headline">¶</a></h3>
+<p>If we leave a channel for whatever reason, we can no longer be sure that we
+didn&#8217;t miss any packets. Therefore:</p>
+<dl class="docutils">
+<dt>Rule LI:</dt>
+<dd>If we leave the channel, we must clear all state to do with the session. This
+is simpler to reason about than trying some complicated recovery logic,
+especially in terms general to <em>any</em> membership operation.</dd>
+</dl>
+<p>For others that leave the channel:</p>
+<dl class="docutils">
+<dt>Rule LS:</dt>
+<dd>If another member leaves outside of a membership operation, propose an
+operation to exclude them.</dd>
+<dt>Rule LOI:</dt>
+<dd><p class="first">If another member leaves during an operation that involves including or
+keeping them in the session, then this is interpreted as a pseudo pF packet
+which is immediately accepted as a <em>failure</em> of the operation - since we know
+that the leaver is unable to complete it, having cleared all state.</p>
+<p>The pId of this pseudo-packet is defined as:</p>
+<blockquote class="last">
+<div><div class="line-block">
+<div class="line">pId = H(prev_pI||&#8221;leave&#8221;||remaining channel members)</div>
+</div>
+</div></blockquote>
+</dd>
+<dt>Rule LOX:</dt>
+<dd>If another member leaves during an operation that involves excluding or
+keeping them in the session, and it fails (for the latter case, this is
+inevitable due to rule LOI), then propose an operation to exclude them.</dd>
+</dl>
+<p>The following rules are about entering, but the reasoning behind them demands
+that we discuss them <em>after</em> the above rules about leaving:</p>
+<dl class="docutils">
+<dt>Rule EAL:</dt>
+<dd>When trying to exclude a member from the cryptographic session, who already
+left the channel: if this member re-enters the channel before we exclude them
+from the session, we can just auto-kick them until we exclude them.</dd>
+</dl>
+<p>The above auto-exclusion rules, together with rule XP, should ensure that we
+mostly don&#8217;t get to a state where a member is in the channel and expects to be
+included, but no-one tries to do this.</p>
+<p>If everyone that wants to exclude them leaves the channel, then there are a few
+race conditions where they would never be kicked. <a class="footnote-reference" href="#nrace" id="id8">[8]</a> So, they should
+leave and re-enter the channel after a timeout. When they leave, existing
+members will notice it and later try to exclude them, which is the corrected
+behaviour that we want.</p>
+<table class="docutils footnote" frame="void" id="nrace" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id8">[8]</a></td><td><p class="first">For example:</p>
+<ol class="last arabic simple">
+<li>X leaves and re-enters. X is still part of others&#8217; sessions, but X has
+cleared that session (rule LI) and expects to be included into a new one.</li>
+<li>G accepted to add Y, G completes, Y now part of session and thinks X is.</li>
+<li>X doesn&#8217;t get auto-kicked for whatever reason (e.g. slow transport)</li>
+<li>Everyone that wants to exclude X leaves (e.g. disconnected), but X remains
+in the channel.</li>
+<li>Y remains in session, X still in Y&#8217;s old session, but (as in step 1)
+expects to be included into a new session.</li>
+</ol>
+</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="excluded-from-a-session">
+<h3>Excluded from a session<a class="headerlink" href="#excluded-from-a-session" title="Permalink to this headline">¶</a></h3>
+<p>When we exclude someone, as per previous sections, they stay in the channel
+until they are kicked, since they can&#8217;t identify a success pF. This means that
+they have state inconsistent with other members, so we can&#8217;t re-include them,
+until they&#8217;ve left the channel and reset their state. In other words:</p>
+<dl class="docutils">
+<dt>Rule IAL:</dt>
+<dd>When someone tries to include a member into the session, who was previously
+excluded but not yet left the channel, auto-kick them from the channel.</dd>
+</dl>
+<p>If everyone that wants to kick them leaves (e.g. disconnected), then they would
+never be kicked. So, they should auto-leave the channel after a timeout, in
+case this happens, ideally after consistency is reached or itself times out.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Hybrid ordering</a><ul>
+<li><a class="reference internal" href="#models-and-assumptions">Models and assumptions</a><ul>
+<li><a class="reference internal" href="#group-transport-channel">Group transport channel</a></li>
+<li><a class="reference internal" href="#group-membership-operation">Group membership operation</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#ordering-and-consistency">Ordering and consistency</a><ul>
+<li><a class="reference internal" href="#context-preservation">Context preservation</a></li>
+<li><a class="reference internal" href="#agreement">Agreement</a></li>
+<li><a class="reference internal" href="#consistency">Consistency</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#partial-visibility">Partial visibility</a><ul>
+<li><a class="reference internal" href="#of-initial-proposals">Of initial proposals</a></li>
+<li><a class="reference internal" href="#of-final-proposals">Of final proposals</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#session-and-channel-interactions">Session and channel interactions</a><ul>
+<li><a class="reference internal" href="#entering-a-channel">Entering a channel</a></li>
+<li><a class="reference internal" href="#leaving-a-channel">Leaving a channel</a></li>
+<li><a class="reference internal" href="#excluded-from-a-session">Excluded from a session</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="04-extras.html"
+                        title="previous chapter">Extra topics</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/appendix/05-hybrid.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="04-extras.html" title="Extra topics"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" >Appendices</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

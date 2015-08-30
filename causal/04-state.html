@@ -1,0 +1,180 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Pseudo-mutable state &mdash; msg-notes 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="top" title="msg-notes 0.0.0 documentation" href="../index.html" />
+    <link rel="up" title="Causal ordering" href="index.html" />
+    <link rel="next" title="Partial visibility" href="05-visibility.html" />
+    <link rel="prev" title="Freshness and presence" href="03-freshness.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="05-visibility.html" title="Partial visibility"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="03-freshness.html" title="Freshness and presence"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Causal ordering</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="pseudo-mutable-state">
+<h1>Pseudo-mutable state<a class="headerlink" href="#pseudo-mutable-state" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="union-of-events-vs-pseudo-mutable-shared-state">
+<h2>Union of events vs pseudo-mutable shared state<a class="headerlink" href="#union-of-events-vs-pseudo-mutable-shared-state" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="global-state">
+<h2>Global state<a class="headerlink" href="#global-state" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="way-merge">
+<h2>3-way merge<a class="headerlink" href="#way-merge" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="possible-state-types">
+<h3>Possible state types<a class="headerlink" href="#possible-state-types" title="Permalink to this headline">¶</a></h3>
+</div>
+</div>
+<div class="section" id="general-merge-algorithm-for-dags">
+<span id="merge-algorithm"></span><h2>General merge algorithm for DAGs<a class="headerlink" href="#general-merge-algorithm-for-dags" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="commutativity-and-associativity">
+<h3>Commutativity and associativity<a class="headerlink" href="#commutativity-and-associativity" title="Permalink to this headline">¶</a></h3>
+</div>
+<div class="section" id="history-matters">
+<h3>History matters<a class="headerlink" href="#history-matters" title="Permalink to this headline">¶</a></h3>
+<p>Merging the same set of states {{ab}, {bc}} in both cases, but with different history:</p>
+<p class="graphviz">
+<img src="../_images/graphviz-60c2717d7d1d6aa57f0354351a0057912d873d12.png" alt="digraph merge_history {
+rankdir=BT;
+node [style=&quot;filled&quot;];
+
+x1 [fillcolor=&quot;#66ff66&quot;,label=&quot;b&quot;];
+z1 [label=&quot;abc&quot;];
+l1 [fillcolor=&quot;#6666ff&quot;,label=&quot;ab&quot;];
+r1 [fillcolor=&quot;#6666ff&quot;,label=&quot;bc&quot;];
+l1 -&gt; z1 [label=&quot;-c&quot;];
+r1 -&gt; z1 [label=&quot;-a&quot;];
+x1 -&gt; l1 [color=&quot;#666666&quot;];
+x1 -&gt; r1 [color=&quot;#666666&quot;];
+
+x0 [fillcolor=&quot;#66ff66&quot;,label=&quot;abc&quot;];
+z0 [label=&quot;b&quot;];
+l0 [fillcolor=&quot;#6666ff&quot;,label=&quot;ab&quot;];
+r0 [fillcolor=&quot;#6666ff&quot;,label=&quot;bc&quot;];
+l0 -&gt; z0 [label=&quot;+a&quot;];
+r0 -&gt; z0 [label=&quot;+c&quot;];
+x0 -&gt; l0 [color=&quot;#666666&quot;];
+x0 -&gt; r0 [color=&quot;#666666&quot;];
+}" />
+</p>
+<p>Node labels indicate the state (an unordered set) at the node. Blue nodes are the input (nodes to be merged), green is the output (merged state), gray arrows indicate merge-parents (i.e. nodes with &gt;1 parent).</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="../index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Pseudo-mutable state</a><ul>
+<li><a class="reference internal" href="#union-of-events-vs-pseudo-mutable-shared-state">Union of events vs pseudo-mutable shared state</a></li>
+<li><a class="reference internal" href="#global-state">Global state</a></li>
+<li><a class="reference internal" href="#way-merge">3-way merge</a><ul>
+<li><a class="reference internal" href="#possible-state-types">Possible state types</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#general-merge-algorithm-for-dags">General merge algorithm for DAGs</a><ul>
+<li><a class="reference internal" href="#commutativity-and-associativity">Commutativity and associativity</a></li>
+<li><a class="reference internal" href="#history-matters">History matters</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="03-freshness.html"
+                        title="previous chapter">Freshness and presence</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="05-visibility.html"
+                        title="next chapter">Partial visibility</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/causal/04-state.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="05-visibility.html" title="Partial visibility"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="03-freshness.html" title="Freshness and presence"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
+          <li class="nav-item nav-item-1"><a href="index.html" >Causal ordering</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

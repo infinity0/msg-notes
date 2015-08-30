@@ -1,0 +1,232 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Topics in secure messaging systems &mdash; msg-notes 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="msg-notes 0.0.0 documentation" href="#" />
+    <link rel="next" title="Causal ordering" href="causal/index.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="causal/index.html" title="Causal ordering"
+             accesskey="N">next</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">msg-notes 0.0.0 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="topics-in-secure-messaging-systems">
+<h1>Topics in secure messaging systems<a class="headerlink" href="#topics-in-secure-messaging-systems" title="Permalink to this headline">¶</a></h1>
+<p>Current models of secure communication sessions only deal with two parties. In
+this scenario, the session exists between single startup and shutdown phases.
+From the point of view of each participant, there is only one <em>other</em> partner
+to the session, and all other parties are untrusted outsiders.</p>
+<p>When we extend communication to multiple parties, we discover qualitatively new
+issues. There are more mechanics to the session - members may join and part
+within the lifetime of the session, outside of the initial startup or final
+shutdown. There are multiple <em>other</em> partners, each of which may try to act
+against each other. This demands additional security requirements, such as
+ensuring that everyone sees the same consistent view of the session, and that
+members can read the session only between the time(s) that they join and part.
+<a class="footnote-reference" href="#npart" id="id1">[1]</a> We also work under the premise that every member knows the session
+membership, but again only for the periods that they actually participate in
+the session. <a class="footnote-reference" href="#npriv" id="id2">[2]</a></p>
+<p>In these documents, we discuss these theoretical issues and outline approaches
+for dealing with them. We assume an efficient packet/cell/stanza broadcast
+operation, that costs near-constant time with the number of participants. We
+aim for a single but modular protocol system that can support both synchronous
+and asynchronous operation (where not all members may be online simultaneously,
+perhaps not even any two), whilst maintaining strong security properties across
+all cases. <a class="footnote-reference" href="#nasync" id="id3">[3]</a></p>
+<p><strong>Outline</strong>. First, we deal with session group integrity. One can use existing
+two-party protocols to multicast messages to several individuals, but nothing
+guarantees the coherent existence of a <em>united group</em>. We discuss the topics
+within this area, and the high-level design choices available. We then propose
+a concrete scheme for solving these issues, namely a causal order of messages,
+encoded by unforgeable immutable pointers. <a class="footnote-reference" href="#nhash" id="id4">[4]</a> This protects against
+transport attacks (reorder, replay, drop of messages) and simplifies the
+problem of freshness. It enforces session transcript consistency, protecting
+against malicious senders. This section is primarily related to distributed
+systems, secondarily to security and cryptography.</p>
+<p>Next, we deal with session membership control - protocols that operate on who
+is part of the session. (This includes session establishment, which is the only
+case that needs to be considered in 2-party protocols.) We discuss the security
+properties common in this area, as well as their practical importance. We look
+at the tradeoffs between different schemes, in terms of description complexity,
+runtime efficiency and security. This section is primarily related to security
+and cryptography, and secondarily to distributed systems.</p>
+<p>Third, we look at how the causal ordering may be used as a framework to develop
+key-rotation ratchets based on more complex greeting protocols, as an extension
+of 2-party DH that current ratchets are based on, by analysing the dependency
+relationships between the messages of the underlying protocol.</p>
+<p>Throughout, we discuss UI issues that arise from our proposals. We also present
+a summary of generic group messaging UI issues, that all applications will need
+to resolve.</p>
+<table class="docutils footnote" frame="void" id="npart" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>Some group communication applications do not require this, but we
+think this more closely matches intuition for a &#8220;<em>private</em>&#8221; chat. Also, one
+may reverse this behaviour by building <em>on top of</em> hide-by-default, but one
+cannot reverse show-by-default - so it&#8217;s more flexible to pick the former.
+(Similar to how one can reverse deniability but not non-repudiability.)</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="npriv" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[2]</a></td><td>An even more private setting would be to make non-contact members
+pseudonymous (e.g. using an ephemeral identity key), but this would involve
+more complexity so we&#8217;ll overlook it for now. However, we believe that our
+proposals do not prevent this from being added in the future.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="nasync" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[3]</a></td><td>It is probably true that asynchronous sessions <em>often</em> expect
+different security and timing/latency properties than synchronous sessions,
+but the former does not <em>necessarily</em> determine the latter. (TODO: give
+examples). So we aim for strong security properties <em>and</em> the flexibility
+of asynchronous operation. Further, all timing rules are proposed in terms
+of an abstract basic time unit, which can be chosen by the application.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="nhash" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id4">[4]</a></td><td>These are implemented using cryptographic hashes, but the mentioned
+properties are the important interfaces to the overall scheme.</td></tr>
+</tbody>
+</table>
+<div class="toctree-wrapper compound">
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="causal/index.html">Causal ordering</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="causal/01-ordering.html">Ordering</a></li>
+<li class="toctree-l2"><a class="reference internal" href="causal/02-consistency.html">Consistency</a></li>
+<li class="toctree-l2"><a class="reference internal" href="causal/03-freshness.html">Freshness and presence</a></li>
+<li class="toctree-l2"><a class="reference internal" href="causal/04-state.html">Pseudo-mutable state</a></li>
+<li class="toctree-l2"><a class="reference internal" href="causal/05-visibility.html">Partial visibility</a></li>
+<li class="toctree-l2"><a class="reference internal" href="causal/06-application.html">Applications</a></li>
+<li class="toctree-l2"><a class="reference internal" href="causal/07-interface.html">User interface and workflows</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="greet.html">Greeting protocols</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ratchet.html">Key-rotation ratchets</a><ul class="simple">
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="hci.html">Indicating security information</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="hci.html#integrity-and-reliability">Integrity and reliability</a></li>
+<li class="toctree-l2"><a class="reference internal" href="hci.html#confidentiality-and-authenticity">Confidentiality and authenticity</a></li>
+<li class="toctree-l2"><a class="reference internal" href="hci.html#other-considerations">Other considerations</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="appendix/index.html">Appendices</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="appendix/01-test-cases.html">Test cases</a></li>
+<li class="toctree-l2"><a class="reference internal" href="appendix/02-proofs.html">Proofs</a></li>
+<li class="toctree-l2"><a class="reference internal" href="appendix/03-pseudocode.html">Pseudocode</a></li>
+<li class="toctree-l2"><a class="reference internal" href="appendix/04-extras.html">Extra topics</a></li>
+<li class="toctree-l2"><a class="reference internal" href="appendix/05-hybrid.html">Hybrid ordering</a></li>
+</ul>
+</li>
+</ul>
+</div>
+</div>
+<div class="section" id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h1>
+<ul class="simple">
+<li><a class="reference internal" href="genindex.html"><span>Index</span></a></li>
+<li><a class="reference internal" href="py-modindex.html"><span>Module Index</span></a></li>
+<li><a class="reference internal" href="search.html"><span>Search Page</span></a></li>
+</ul>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="#">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Topics in secure messaging systems</a></li>
+<li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
+</ul>
+
+  <h4>Next topic</h4>
+  <p class="topless"><a href="causal/index.html"
+                        title="next chapter">Causal ordering</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/index.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="causal/index.html" title="Causal ordering"
+             >next</a> |</li>
+        <li class="nav-item nav-item-0"><a href="#">msg-notes 0.0.0 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>

@@ -1,0 +1,373 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>Indicating security information &mdash; msg-notes 0.0.0 documentation</title>
+    
+    <link rel="stylesheet" href="_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    './',
+        VERSION:     '0.0.0',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true
+      };
+    </script>
+    <script type="text/javascript" src="_static/jquery.js"></script>
+    <script type="text/javascript" src="_static/underscore.js"></script>
+    <script type="text/javascript" src="_static/doctools.js"></script>
+    <link rel="top" title="msg-notes 0.0.0 documentation" href="index.html" />
+    <link rel="next" title="Appendices" href="appendix/index.html" />
+    <link rel="prev" title="Key-rotation ratchets" href="ratchet.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="appendix/index.html" title="Appendices"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="ratchet.html" title="Key-rotation ratchets"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">msg-notes 0.0.0 documentation</a> &raquo;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="indicating-security-information">
+<h1>Indicating security information<a class="headerlink" href="#indicating-security-information" title="Permalink to this headline">¶</a></h1>
+<p>Here we describe, in abstract terms, concepts that must be communicated to the
+user during secure and insecure situations, so that they may distinguish them
+and be able to take appropriate action. We do not advocate specific concrete UX
+features here (though we give a few suggestions as examples), but we <em>do</em>
+intend for a designer to use these discussions to develop such proposals.</p>
+<div class="section" id="integrity-and-reliability">
+<h2>Integrity and reliability<a class="headerlink" href="#integrity-and-reliability" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="real-parents-of-a-message">
+<h3>Real parents of a message<a class="headerlink" href="#real-parents-of-a-message" title="Permalink to this headline">¶</a></h3>
+<p>As explained elsewhere, we don&#8217;t use a consensus mechanism for approving
+messages, and therefore the session transcript is necessarily a partial order
+and not a total (linear) order - even if there is (e.g.) a central server
+dictating a secondary linear order for display purposes.</p>
+<p>This means that some messages may not be displayed directly below the one(s)
+that they are directly replying to. Most of the time this isn&#8217;t a problem, and
+human users can naturally resolve any ambiguity. However, for cases where this
+is not possible, or if the session is security-critical, then there should be a
+secondary interface to indicate the real parents/ancestors of a message.</p>
+<p>Some suggestions include:</p>
+<ul>
+<li><p class="first">annotations to indicate real parents, for example:</p>
+<div class="highlight-python"><div class="highlight"><pre>Alice: Who likes ice cream?
+Bob: Who likes SSLv3?
+Carol: Me! [2] # indicates replying to -2nd message relative to this one
+</pre></div>
+</div>
+</li>
+<li><p class="first">highlight (gray out) a message&#8217;s (non-)ancestors on hover / long-press</p>
+</li>
+</ul>
+</div>
+<div class="section" id="messages-sent-during-a-member-change">
+<h3>Messages sent during a member change<a class="headerlink" href="#messages-sent-during-a-member-change" title="Permalink to this headline">¶</a></h3>
+<p>TODO(xl): generalise so these aren&#8217;t specific to GKAs</p>
+<p>It takes <em>some</em> time to run the GKA (group key agreement) to change the session
+key to include/exclude a user. During this time, messages may be sent (by
+anyone) to the older set of members. When the GKA succeeds, there might be a
+race condition like this:</p>
+<div class="highlight-python"><div class="highlight"><pre>Bob   sends: (1)               # final message of final round of GKA
+Carol sends: (2)               # message encrypted to old members
+Alice recvs: (1) from Bob      # Alices finishes GKA, and updates her view of the membership
+Alice recvs: (2) from Carol
+</pre></div>
+</div>
+<p>In the above diagram, (1) and (2) are messages. Carol sends (2) before she has
+received (1) from Bob. When Alices receives (1), her UI will say something like
+&#8220;Dave has joined the room&#8221; and her next message will be encrypted to Dave - but
+later she will receive (2) from Carol that was <em>not</em> encrypted to Dave.</p>
+<p>The UI must be able to show that (2) was sent to the <em>old</em> members rather than
+the new members. We know this information in the underlying system; the problem
+is how to <em>indicate</em> it in a non-confusing way.</p>
+</div>
+<div class="section" id="own-messages-sent-after-starting-a-member-change">
+<h3>Own messages sent after starting a member change<a class="headerlink" href="#own-messages-sent-after-starting-a-member-change" title="Permalink to this headline">¶</a></h3>
+<p>Some membership operations may take some time to complete. If we exclude a
+member, and the greeting system does not immediately make this effective, then
+the UI for sending messages must <em>clearly indicate</em> that messages we send are
+still being encrypted to the old membership, that includes the member in the
+process of being excluded.</p>
+<p>(The issue also exists for joining, but is less serious since any message
+intended for the newer group implicitly has permission to be seen by the older
+group.)</p>
+<p>Some suggestions include:</p>
+<ul class="simple">
+<li>Disabling the send button whilst the exclusion operation is in progress.
+This degrades the user experience, and should be avoided.</li>
+<li>Have explicit notices that a member was included / excluded - in addition to
+the user list, which is typically not in the primary area of the screen. When
+the local user excludes a member, there must already have been an inclusion
+notice for that member, (hopefully) conveying to the local user that a
+temporary lack of an exclusion notice means they are not yet excluded.</li>
+</ul>
+</div>
+<div class="section" id="messages-received-out-of-order">
+<span id="hci-ordering"></span><h3>Messages received out-of-order<a class="headerlink" href="#messages-received-out-of-order" title="Permalink to this headline">¶</a></h3>
+<p>We guarantee ordering - roughly, that messages are seen by recipients in the
+order in which they were sent - by buffering messages received out-of-order.
+Say Alice sends messages (1) and (2) to Bob. If the transport is unreliable and
+Bob receives (2) first, then we won&#8217;t display (2) until we receive (1), so
+that we can display both in the correct order.</p>
+<p>If we don&#8217;t receive (1) after a reasonable time, we <em>might</em> try to communicate
+this to the user - e.g. a notice like &#8220;(2) received out-of-order; waiting for
+older (1)&#8221;. Importantly, we must not display the <em>contents</em> of these messages
+in waiting, to avoid breaking our security assumptions. <a class="footnote-reference" href="#buf" id="id1">[1]</a> We could also
+offer some advice on why this might be happening, but in a way that avoids
+giving a false impression on <em>the exact cause</em>: the symptom could either
+indicate an unreliable transport, or an attack by the transport, or even
+another member, but <em>we don&#8217;t know which</em>.</p>
+<p>On the other hand, the above may add unnecessary complexity to the UX, and
+burden the user with information that is hard to take action on. So, we might
+just simply ignore when messages are being held in the buffer - i.e. to not
+reveal this to the user at all, and pretend that we haven&#8217;t received (2), to
+avoid frustrating the user. This may seem unnatural at first, but it is quite
+common for transport schemes that provide ordering guarantees - e.g. in TCP, if
+higher-sequence packets arrive earlier than lower-sequence ones, they are
+buffered completely invisibly to higher-layer applications and to the user.</p>
+<p>As a failsafe to this simple option, we can trigger a warning if held messages
+remain in the buffer for too long. Optionally, we could automatically end the
+session and then display the contents of the buffered out-of-order messages -
+this is safe because there are no further messages to be sent, so there is no
+longer any chance of breaking the aforementioned security assumptions.</p>
+<table class="docutils footnote" frame="void" id="buf" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>Whenever we send a message, we also implicitly acknowledge all
+previous messages, in an efficient way. If we send a message after showing
+some messages but not their parents, then this acknowledgement is a lie
+that propogates and corrupts other members&#8217; views of the session and its
+consistency. See <a class="reference internal" href="appendix/04-extras.html#consistency-without-reliability"><span>Consistency without reliability</span></a> for a more detailed
+exploration of this.</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="messages-not-yet-acknowledged">
+<h3>Messages not yet acknowledged<a class="headerlink" href="#messages-not-yet-acknowledged" title="Permalink to this headline">¶</a></h3>
+<p>After a message is displayed (authored by either us or others), we wait for
+everyone else to acknowledge it. During this time, the message is &#8220;not
+fully-acked&#8221;, and we also know exactly who has not yet acknowledged it.
+Ideally, this set of people will eventually become empty, at which point we
+know that everyone has seen it (&#8220;fully-acked&#8221;). The question is how to display
+the &#8220;not fully-acked&#8221; status during the interim period. For example:</p>
+<ul class="simple">
+<li>We could gray out the message until it is fully-acked.<ul>
+<li>A variant of this is to gray it only after a grace timeout period, if it is
+not already fully-acked by that time. The reasoning behind this is that
+<em>every</em> message will take <em>some</em> time for everyone to ack it, but graying
+<em>every</em> message immediately when displayed might be annoying or weird.</li>
+</ul>
+</li>
+<li>We could add extra indicators to a message when it is fully-acked.</li>
+</ul>
+<p>For comparison: At the time of writing, Facebook chat with 4 people looks
+something like this:</p>
+<div class="highlight-python"><div class="highlight"><pre>Alice : (1)
+Dave  : (2)
+Carol : (3)
+[seen by Bob]
+</pre></div>
+</div>
+<p>This means Bob has seen {1,2,3} - this is the equivalent of &#8220;acked&#8221; in our
+system. (Ours is more secure, but the <em>intended</em> semantics are the same.) With
+our strong ordering guarantees mentioned above, we can additionally deduce that
+Carol has seen {1,2,3}, and Dave has seen {1,2} - but what has Alice seen? She
+might have seen {1,2} or only {1}; it would be good to let the user know
+exactly which. Yes, this extra information is likely unnecessary in &#8220;most
+typical cases&#8221;, but it is still good to make it accessible in a secondary
+interface, in case the user has critical needs for a particular case.</p>
+<p>As with drop detection, if we reach a good state (here, consistency) <em>after</em>
+the timeout, we should cancel the warning or at least downgrade its severity.
+Also, here the warning is associated with a message that is <em>already displayed</em>
+to the user. Therefore, it is important that the warning is shown not as a
+point-event for the user to dismiss and forget, but as a persistent state
+shown together with the message, in the same space and time. TODO(xl): reword</p>
+</div>
+<div class="section" id="users-not-responding-to-heartbeats">
+<h3>Users not responding to heartbeats<a class="headerlink" href="#users-not-responding-to-heartbeats" title="Permalink to this headline">¶</a></h3>
+<p>We optionally send heartbeats to check that other people are alive. The purpose
+of this is to detect that &#8220;no messages received from Dave&#8221; really means &#8220;Dave
+didn&#8217;t send any messages&#8221;, as opposed to &#8220;the attacker dropped all of Dave&#8217;s
+messages&#8221;.</p>
+<p>There could be some indication of this in the UI - for example, graying out a
+username when we don&#8217;t see their heartbeat responses, etc. Extra information
+could be provided via a secondary interface, like &#8220;user not responsive since 19
+seconds ago&#8221;.</p>
+</div>
+</div>
+<div class="section" id="confidentiality-and-authenticity">
+<h2>Confidentiality and authenticity<a class="headerlink" href="#confidentiality-and-authenticity" title="Permalink to this headline">¶</a></h2>
+<p>TODO</p>
+</div>
+<div class="section" id="other-considerations">
+<h2>Other considerations<a class="headerlink" href="#other-considerations" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="secondary-interface">
+<h3>Secondary interface<a class="headerlink" href="#secondary-interface" title="Permalink to this headline">¶</a></h3>
+<p>In most typical cases, the user may not care too much about the nuances of some
+security properties (e.g. group integrity and reliability), and therefore
+shouldn&#8217;t be burdened by the extra security information that our system offers.
+However, in some cases, it may be a strong user concern, so we should provide a
+way for the user to access this information; it would be irresponsible not to.
+The existence of these features are also a good way of distinguishing our
+secure application from competing insecure applications; see next section.</p>
+<p>By <em>secondary interface</em>, we mean UI features that exist away from the main
+view, so as to not overload the user with too much information. This is meant
+to achieve a smooth default UX for most users, but also make detailed security
+information accessible for users with high security needs. One approach is to
+provide extra information in pop-ups that are only activated by long-press or
+double-click on a related component in the primary interface; designers may
+evaluate a wide range of other possibilities too.</p>
+</div>
+<div class="section" id="high-level-summary-indicators">
+<h3>High-level summary indicators<a class="headerlink" href="#high-level-summary-indicators" title="Permalink to this headline">¶</a></h3>
+<p>The properties above are fine-grained information about error conditions of
+specific messages or users. However, the desired state is for there to be no
+errors, and hopefully this should hold most of the time (i.e. with a
+non-malicious and semi-reliable transport). Rather than scanning our eye
+through an entire list of messages or users to check that all of them are OK,
+it would be more efficient to have a small number of &#8220;summary&#8221; indicators.
+Users can then tell at-a-glance if everything is OK - if so, there is no more
+work to do; if not, <em>then</em> they can check a more time-consuming secondary
+interface for specific information about errors.</p>
+<p>For example, there could be one indicator for each of the properties mentioned
+above, that is quantified over <em>all</em> messages/users:</p>
+<ul class="simple">
+<li>no out-of-order messages being queued for display = &#8220;not missing any older messages&#8221;</li>
+<li>seen a heartbeat for all users recently = &#8220;not missing any newer messages&#8221;</li>
+<li>all messages acked by everyone else = &#8220;everyone else has seen what we&#8217;ve seen&#8221;</li>
+</ul>
+<p>The first two could even be combined into the same indicator, to communicate
+&#8220;not missing any messages&#8221;. However, it is probably good to separate the third
+item, since it takes longer than the other two to reach assurance about.</p>
+<p>&#8220;Indicator&#8221; is used loosely; of course it is OK and maybe preferable if they
+are invisible for good states, and only show themselves when something is
+actually wrong.</p>
+</div>
+<div class="section" id="relationships-with-existing-and-insecure-notions">
+<h3>Relationships with existing and insecure notions<a class="headerlink" href="#relationships-with-existing-and-insecure-notions" title="Permalink to this headline">¶</a></h3>
+<p>Many messaging applications already have notions analogue to the ones described
+above, but these are not end-to-end secure. For example, with XMPP presence,
+the server tells the client when a contact is online/offline, or when they
+join/part a channel. Other applications have an idea of delivery receipts, but
+these are authenticated by the server rather than by the actual recipient.</p>
+<p>Such information should be regarded as untrusted. We implement <em>more secure</em>
+(i.e. end-to-end) forms of these notions, so the UI should emphasise the
+properties from our system, and de-emphasise the less secure ones.</p>
+<p>In some cases, it could be good to <em>combine</em> the information from both sources.
+For example, if we haven&#8217;t received an (authenticated) acknowledgement, we are
+<em>unsure</em> if a message has been delivered or not. But, if the local internet is
+offline, or if the server is unreachable, then we <em>know</em> that a message has
+<em>not</em> been delivered. These differences in meaning could be communicated via
+different states (e.g. colours) of the same UI indicator.</p>
+<p>In other cases, the untrusted source may be <em>replaced completely</em> by our more
+secure notions. For example, in the case of freshness, it is trivial for the
+server to report false presences, so our system (authenticated heartbeats)
+should be used where possible. For the case of joining/parting a room, this is
+probably more appropriate too - i.e. hiding XMPP join/part events, and only
+indicate GKA events in the UI.</p>
+</div>
+</div>
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h3><a href="index.html">Table Of Contents</a></h3>
+  <ul>
+<li><a class="reference internal" href="#">Indicating security information</a><ul>
+<li><a class="reference internal" href="#integrity-and-reliability">Integrity and reliability</a><ul>
+<li><a class="reference internal" href="#real-parents-of-a-message">Real parents of a message</a></li>
+<li><a class="reference internal" href="#messages-sent-during-a-member-change">Messages sent during a member change</a></li>
+<li><a class="reference internal" href="#own-messages-sent-after-starting-a-member-change">Own messages sent after starting a member change</a></li>
+<li><a class="reference internal" href="#messages-received-out-of-order">Messages received out-of-order</a></li>
+<li><a class="reference internal" href="#messages-not-yet-acknowledged">Messages not yet acknowledged</a></li>
+<li><a class="reference internal" href="#users-not-responding-to-heartbeats">Users not responding to heartbeats</a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#confidentiality-and-authenticity">Confidentiality and authenticity</a></li>
+<li><a class="reference internal" href="#other-considerations">Other considerations</a><ul>
+<li><a class="reference internal" href="#secondary-interface">Secondary interface</a></li>
+<li><a class="reference internal" href="#high-level-summary-indicators">High-level summary indicators</a></li>
+<li><a class="reference internal" href="#relationships-with-existing-and-insecure-notions">Relationships with existing and insecure notions</a></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="ratchet.html"
+                        title="previous chapter">Key-rotation ratchets</a></p>
+  <h4>Next topic</h4>
+  <p class="topless"><a href="appendix/index.html"
+                        title="next chapter">Appendices</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/hci.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" />
+      <input type="submit" value="Go" />
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+    <p class="searchtip" style="font-size: 90%">
+    Enter search terms or a module, class or function name.
+    </p>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="appendix/index.html" title="Appendices"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="ratchet.html" title="Key-rotation ratchets"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">msg-notes 0.0.0 documentation</a> &raquo;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+    </div>
+  </body>
+</html>
