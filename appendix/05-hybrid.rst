@@ -330,7 +330,7 @@ every pI should also contain:
 prev_CH:
   chain hash of prev_pF = CH(prev_pF)
 
-When an incoming member accepts their first pF, they may read the previous CH
+When an incoming member accepts their first pI, they may read the previous CH
 from this value, trusting it opportunistically until the next consistency
 check. When starting a new session from scratch (so that there is no prev_pF),
 we may use the random prev_pF as mentioned in :ref:`hybrid-context-preserve`;
