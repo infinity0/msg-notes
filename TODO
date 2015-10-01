@@ -16,3 +16,8 @@
   environments for all formulaic content as well as variable
   references. This would render variables (such as "u" and "a")
   usually in italics, and make reading much simpler.
+
+- factor out the security/false-positive argument somewhere common
+  - made twice in causal/02-consistency, once in appendix/05-hybrid
+
+- categorise rules in 05-hybrid in a more systematic way

@@ -496,10 +496,10 @@ Rule ES:
   user that they would like to join the session.
 
 Rule EO:
-  If another member enters during a membership operation, then (by rule XP)
-  they are not part of the pending new sub-session, so kick them. Optionally,
-  notify the local user that they probably want to join the channel, so that
-  they can manually invite them.
+  If another member enters during a membership operation, then (assuming we've
+  already applied rule XP) they are not part of the pending new sub-session, so
+  kick them. Optionally, notify the local user that they probably want to join
+  the channel, so that they can manually invite them.
 
 Leaving a channel
 -----------------
@@ -565,10 +565,11 @@ behaviour that we want.
 Excluded from a session
 -----------------------
 
-When we exclude someone, as per previous sections, they stay in the channel
-until they are kicked, since they can't identify a success pF. This means that
-they have state inconsistent with other members, so we can't re-include them,
-until they've left the channel and reset their state. In other words:
+When we exclude someone, as prescribed previously, they stay in the channel
+until they are kicked, since (in the general case, we must assume) they can't
+identify a success pF. Then, their state is inconsistent with other members, so
+we can't re-include them, until they've left the channel and reset it. In terms
+of a rule:
 
 Rule IAL:
   When someone tries to include a member into the session, who was previously
