@@ -245,9 +245,9 @@ accepted and succeeds immediately without requiring more packets; further
 proposals to fail "-c" are rejected, and then a second proposal to include *b*
 is accepted after the first one was rejected earlier.
 
-Our agreement algorithm, ignoring a few special cases mentioned later, is as
-follows: for a given parent pF/pI, we accept the first pI/pF proposal in the
-channel event sequence that references it, except that:
+Our agreement algorithm, ignoring a few special cases mentioned later (rule EIO
+and EII), is as follows: for a given parent pF/pI, we accept the first pI/pF
+proposal in the channel event sequence that references it, except that:
 
 Rule XP:
   We ignore proposals that are added to the channel when the channel membership
@@ -305,6 +305,9 @@ pId:
 CH(pId):
   H(CH(pId of previous accepted proposal) || pId || pId-type)
 
+The encoding should be unambiguous; the actual implementation may add extra
+padding characters beyond simple concatenation, if this is required.
+
 We include the (unauthenticated) channel sender and recipients in the hash for
 the packet-id, so that our consistency checks also cover this information. This
 is necessary, because our agreement algorithm uses that information. If we omit
@@ -331,14 +334,23 @@ prev_CH:
   chain hash of prev_pF = CH(prev_pF)
 
 When an incoming member accepts their first pI, they may read the previous CH
-from this value, trusting it opportunistically until the next consistency
-check. When starting a new session from scratch (so that there is no prev_pF),
-we may use the random prev_pF as mentioned in :ref:`hybrid-context-preserve`;
-this should not actually need any specific code to "just work".
+from this record, trusting it opportunistically until the next consistency
+check (described below). When starting a new session from scratch with a random
+prev_pF (as defined in :ref:`hybrid-context-preserve`), we can use any value
+here; in practise we arbitrarily use prev_CH = H("" || prev_pF || 0xFF).
 
-Periodically, everyone authenticates and sends the following information:
+Chain hashes would be unnecessary if we can be sure that every accepted packet
+is cryptographically bound to the previous accepted packet i.e. an attacker
+cannot trick anyone into interpreting it as referencing a different one. Most G
+do bind packet *contents* thus, but we must also hash in information about the
+*channel members* which is typically ignored. So chain hashes *are* necessary
+here. Another benefit is that we avoid relying on properties of G.
 
-    ( last pId seen, CH(pId) )
+When operation finishes, everyone in the resulting session (i.e. the previous
+members for a successful finish, or the next members for a failed finish)
+authenticates and sends the following information:
+
+    ( last accepted pId, CH(pId) )
 
 This could be done as part of a message in our (authenticated) causal order
 history graph. This essentially corresponds to an "ack" that we described
@@ -350,13 +362,13 @@ Why is this mechanism necessary? Surely G already authenticates its result
 identically across all members? Well, firstly, we don't assume that G does this
 by *all members*, only by some party that is satisfactory. Secondly, *even if*
 G does authenticate the result (of a particular pF) by all members, whether it
-is actually accepted by each member, is outside of its control. For example,
-two members may be able to send two different pF proposals, that can each cause
-G to reach different but valid results. With the help of the transport, this
-could be arranged, causing the session to split outside of G's control. We
-could specify that G should prevent this, but the property is quite hard to
-define formally. [#Ngcon]_ So instead we specify this consistency check, that
-works regardless of the guarantees that G makes.
+is actually accepted by each member is outside of its control. For example, two
+members may be able to send two different pF proposals, that can each cause G
+to reach different but valid results. The transport could arrange itself so
+that some members receive one proposal and some the other, causing the session
+to split outside of G's control. We could specify that G should prevent this,
+but this is generally not a cryptographic problem. [#Ngcon]_ Instead, we do
+this consistency check that works regardless of the guarantees that G makes.
 
 .. [#Nhash] Our definition allows an outside observer to potentially calculate
     pIds and CHs. This is not a problem for anything we describe, but may cause
