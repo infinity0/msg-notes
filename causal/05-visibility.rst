@@ -1,13 +1,20 @@
+==================
 Partial visibility
 ==================
 
-Member-sets
------------
+Representation
+==============
 
-- diff and apply
+Member-sets, diff and apply
+
+For any given message m, some parents might not be visible to some of the
+members. Do we also hide the parent references then? How to represent this.
+
+Security properties we need to keep in mind, and how to achieve these - e.g.
+can't allow *arbitrary* different parent pointers for different members.
 
 Operations on the causal order
-------------------------------
+==============================
 
 Define "cut" in the graph, generalisation of "before" and "after".
 
@@ -15,13 +22,20 @@ Expand definition of "acked-by".
 
 Expand algorithms for FIN/ACK.
 
-Subjective vs objective views
------------------------------
+Rejoin semantics
+================
 
-- Rejoin semantics
+Unclear what "parent-pointer" semantics should be, e.g. when I rejoin, should I
+"point to" my last message from before I left? Probably not - unclear what the
+semantics are, not intuitive, etc.. but could explore further.
+
+If we do disallow the above, we then need to adjust "by(u) is a total order"
+checks. In both cases (allow vs disallow), other members should still be able
+to identify "this is the same person" across both sub-sessions. (This is for
+usability and convenience; if you must be anonymous just rotate public keys.)
 
 Merge algorithm
----------------
+===============
 
 Under partial visibility, our merge algorithm from the previous section does
 not work consistently. Here are some examples that indicate the problem.
