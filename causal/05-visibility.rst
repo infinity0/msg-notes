@@ -41,7 +41,7 @@ Under partial visibility, our merge algorithm from the previous section does
 not work consistently. Here are some examples that indicate the problem.
 
 (Taken literally, they ignore that by(u) must be a total order; but we can
-regain this property by rewriting a instead as multiple members {a1, a2, a3,
+regain this property by rewriting "a" instead as multiple members {a1, a2, a3,
 ...}, however many is necessary. But for our current purposes, it's easier to
 follow if we shortcut this and just write "a" instead.)
 

@@ -46,7 +46,7 @@ the input (nodes to be merged), green is the output (merged state), gray arrows
 indicate merge-parents (i.e. nodes with >1 parent).
 
 So we need 3-way merge. This can be defined as a primitive by itself, or
-sometimes it's easier to define separate "diff" and "apply" operations for your
+sometimes it's easier to define separate `diff` and `apply` operations for your
 state data type, and then we have
 
     3-way-merge(O, A, B) = apply(B, diff(O, A)) = apply(A, diff(O, B))
@@ -71,8 +71,8 @@ If this results in conflicts, then our algorithm will result in conflicts
 during its operation that must be resolved externally, either manually or via
 CRDT(?TODO). This is outside the scope of our current discussion.
 
-Simple "intuitive" derivation
------------------------------
+Simple intuitive derivation
+---------------------------
 
 Let's try a recursive definition. As with all recursive derivations, first
 let's pretend we already have what we want to define::
@@ -95,7 +95,7 @@ To make our lives easier, let's derive a simpler form first::
 
 There, that wasn't so hard. But now how do we turn ``merge2`` into ``merge``?
 As in many other areas of computer science, if we have a binary operation, we
-can use `fold`_ (sometimes called "reduce") to apply it to a non-empty list. We
+can use `fold`_ (sometimes called `reduce`) to apply it to a non-empty list. We
 have to do some minor fiddling as well::
 
     def merge2'(a: node, b: node) -> node:
@@ -146,12 +146,12 @@ and ``recurse-fold`` is wrong. To explain why, we'll justify our steps more
 with a semi-formal argument. Hopefully it's precise enough to be turned into a
 more rigorous proof later, if one wanted to do that.
 
-First, let's define an "operational edge". This is an edge from a node to its
+First, let's define an `operational edge`. This is an edge from a node to its
 parent, where the author of the node intended to introduce some state change,
 the "operation". So for example, for a node with a single edge whose state
-differs from its parent's, that edge is an "operational edge"; however for a
+differs from its parent's, that edge is an `operational edge`; however for a
 node with many parents where the author only performed the merge algorithm and
-did nothing else, none of these edges are "operational edges".
+did nothing else, none of these edges are `operational edges`.
 
 Our assumptions, which we think are reasonable starting points, but perhaps not
 fully rigourous or "maximally simple", are:
