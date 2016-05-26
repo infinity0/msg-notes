@@ -125,3 +125,32 @@ history where a does actually get the same result as b:
 Notice how the subgraph "visible to a, b" is identical in both cases, including
 even its edges to nodes outside the subgraph. We conclude that there is no way
 for "b" to properly execute the merge algorithm.
+
+Further options
+===============
+
+At this point maybe we want to go back to exploring CRDTs, since they don't
+require history.
+
+Another option is to force the state representation to increase along a partial
+order, in the same way that state-based CRDTs do. For example, instead of
+representing ``{a, b, u}`` in the first graph above, we could represent it as
+``{a: 1, b: 1, u: 1, v: -1}`` where:
+
+- e.g. ``1`` means they are a member of that message, and have been included 1
+  times before
+- e.g. ``-1`` means they are not a member of that message, but previously was,
+  and have been excluded 1 times before.
+
+This would allow b to execute the merge correctly. However it reveals to them
+that v was part of the previous sub-session, which is what we were trying to
+avoid [#mabu]_. Nevertheless, we do still retain message {contents, history}
+privacy against b. (TODO: there is probably a CRDT that is equivalent to this.)
+
+.. [#mabu] In our example there is also a message with members ``abv`` that b
+    sees, so b will find out regardless - but the author of the message with
+    members ``abu`` *cannot* rely on this fact in general.
+
+TODO: write up some reasons that we partially figured out, on why it's probably
+impossible to avoid this privacy leak to b, if we want everyone to keep a
+consistent view of the session.

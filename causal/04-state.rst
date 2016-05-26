@@ -238,3 +238,102 @@ about the order of the input list (and so we can pass in a set instead). This
 is basically what we wanted and expected.
 
 TODO: prove this...
+
+Summary
+-------
+
+Merge algorithms on DAGs
+
+Requirements:
+
+- there is a partial order on state-update events.
+
+- there exists a ternary operator `3-way-merge` on states which obeys
+
+  Symmetric under a fixed first argument
+    |forall| o, a, b: 3-way-merge(o, a, b) = 3-way-merge(o, b, a)
+
+  `Idempotent <https://en.wikipedia.org/wiki/Idempotence>`_ under a fixed first argument
+    |forall| o, a: 3-way-merge(o, a, a) = a
+
+  This condition is satisfied by another stronger condition (which is sometimes
+  more natural to derive): that there exists functions `diff(state, state)` and
+  `apply(state, diff)` that obeys:
+
+  TODO
+
+Consequences:
+
+- The merge algorithm is associative. One has to fiddle with the definition a
+  little bit, as follows:
+
+  TODO
+
+Comparison vs CRDTs
+===================
+
+Our history-based merge has a similar purpose to CRDTs [#crdt]_, but these are
+designed with different assumptions, and have different requirements on what
+they need. To compare:
+
+- CRDTs do not transmit history, and apply operation and state-update events
+  (for op-based and state-based CRDTs, respectively) without knowledge of their
+  intended context - i.e. the knowledge of each event's author, at the time
+  that they generated that event. They are specifically designed around being
+  able to ignore this context, i.e. to "move" these events around arbitrary
+  places of recipients' histories.
+
+  By contrast, history-merge specifically requires the opposite - that there is
+  an immutable history that everyone has a strong eventual consistent view of,
+  with each state-update being immutably associated with a particular event on
+  this history. We do this for security (integrity) reasons, as do DVCSs.
+
+- To achieve the `conflict-free` property (and to be able to correctly re-apply
+  events under arbitrarily different contexts), CRDTs place extra requirements
+  on what valid events and operations/states are. History-merge only requires
+  there be a 3-way-merge over the states.
+
+  To be clear: as far as I know, nobody has studied the differences between
+  these requirements, but I strongly suspect that the 3-way-merge requirement
+  is weaker (easier). For example, history-merge can support arbitrary set
+  remove/re-add operations, but there is no CRDT that does this. [#cset]_
+
+- The term `partial order` is used in completely unrelated ways. To explain:
+
+  - In the context of history-merge, the term refers to the partial order on
+    the *events*. It (the order itself) is a data structure with real bits
+    representing it, constructed during each run of the protocol. There can be
+    no other partial order on the same events.
+
+    It's *possible* (we haven't proved or checked it) that the laws we defined
+    for 3-way-merge necessarily induce a partial order on the states. However,
+    this is not directly relevant to any of our other discussions about our
+    history-merge - and that is why we haven't bothered to prove or check it.
+
+  - In a state-based CRDT, the term refers to a partial order on the *states*.
+    It (the order itself) has no "real representation" in terms of a data
+    structure, but rather is a mathematical concept inherent to the definition
+    of that particular CRDT, chosen independently of (and constant with respect
+    to) any run of a protocol that uses it. Conceptually and in general, there
+    *could* exist other mathematical partial orders over the same states, that
+    also satisfy the same laws as required by the CRDT.
+
+- With history-merge, state updates do not have to increase along the states'
+  partial order, if one even exists.
+
+- The history-based merge algorithm is indeed "idempotent, commutative and
+  associative" in the same way that state-based CRDTs merge algorithms are. To
+  be clear: as described, history-merge is a pure function over a given history
+  graph and its associated states; whereas the `merge` of state-based CRDTs is
+  typically described as an impure procedure that updates the local current
+  state. But fundamentally, they are nearly the same concept, the difference
+  being that the CRDT `merge` works without a history.
+
+.. [#crdt] See `CRDTs Illustrated <https://youtu.be/9xFfOhasiOE?t=24m>`_ for
+    the definitions of both op-based and state-based CRDTs. The rest of the
+    video is also a good introduction. See `Wikipedia
+    <https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type>`_ for
+    more detailed information.
+
+.. [#cset] That is, without tweaking the representation of the unordered set,
+    which has other implications such as privacy loss or extra storage cost.
