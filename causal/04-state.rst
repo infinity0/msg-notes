@@ -63,6 +63,9 @@ than operational CRDTs which don't.
 General merge
 =============
 
+TODO: describe our requirement/assumption that nodes are not ancestors of each
+other. If they are, then lca calculations will detect this and abort.
+
 We assume there is some 3-way merge for our state data type::
 
     3-way-merge(o: state, a: state, b: state) -> state
@@ -148,10 +151,24 @@ more rigorous proof later, if one wanted to do that.
 
 First, let's define an `operational edge`. This is an edge from a node to its
 parent, where the author of the node intended to introduce some state change,
-the "operation". So for example, for a node with a single edge whose state
-differs from its parent's, that edge is an `operational edge`; however for a
-node with many parents where the author only performed the merge algorithm and
-did nothing else, none of these edges are `operational edges`.
+the "operation". So for example: (a) for a node with a single edge whose state
+differs from its parent's, that edge is an `operational edge`; (b) for a node
+with many parents where the author only performed the merge algorithm and did
+nothing else, none of these edges are `operational edges`; (c) for a node v
+with many parents where the author also performed extra operations *on top of*
+the merge algorithm, we may instead treat this as virtual nodes (v₀ |leftarrow|
+v₁) where v₀ points to the actual parents of v as in case (b) and the edge from
+v₁ to v₀ is the operational edge as in case (a). (These cases are not used
+in the below proof-sketch, but do become useful in an actual rigorous proof.)
+
+Our other definitions:
+
+- \\ is a binary infix operator denoting set subtraction.
+- |SquareUnion| is a binary infix operator denoting set *disjoint* union. That
+  is, A |SquareUnion| B is equal to A |cup| B but with the extra assertion that
+  A |cap| B = |emptyset|.
+- anc*(V) = |bigcup| {anc(v) |forall| v |in| V}, the union of ancestors of all
+  nodes in set V.
 
 Our assumptions, which we think are reasonable starting points, but perhaps not
 fully rigourous or "maximally simple", are:
@@ -159,42 +176,43 @@ fully rigourous or "maximally simple", are:
 1. Given node a, its state ``a.state`` "applies exactly once" all operational
    edges in anc(a). We'll abbreviate this as ``a.state`` |cong| anc(a).
 
-2. If a |le| b, then diff(a.state, b.state) |cong| B \\ A.
+2. If a |le| b, then diff(``a.state``, ``b.state``) |cong| B \\ A.
 
    a. More generally, for all subgraphs A, B and states s, t: if A |subseteq| B
-      and s |cong| A and t |cong| B, then diff(s, t) |cong| B \\ A. (\\ is set
-      subtraction.)
+      and s |cong| A and t |cong| B, then diff(s, t) |cong| B \\ A.
 
    b. Conversely, for all subgraphs A, D and states s, diffs d: if A and D are
-      disjoint (A |cap| D = |emptyset|) and s |cong| A and d |cong| D, then
-      apply(s, d) |cong| A |SquareUnion| D. (|SquareUnion| is disjoint union.)
+      disjoint and s |cong| A and d |cong| D, then apply(s, d) |cong| A
+      |SquareUnion| D.
 
-3. For ``merge(X)``, we want to find some t |cong| anc*(X), where anc*(V) =
-   |bigcup| {anc(v) |forall| v |in| V}, the union of ancestors of nodes in X.
+3. For ``merge(X)``, we want to find some t |cong| anc*(X).
 
-Let A = anc(a), B = anc(b). In the case of ``merge2(a, b)``, we want to find t
-|cong| A |cup| B. First, by standard set theory let's note that:
+Now follows our proof-sketch. Let A = anc(a), B = anc(b). Sometimes we'll also
+treat these node-sets as subgraphs (i.e. including the edges between them);
+hopefully it's clear from the context. Now, our goal for ``merge2(a, b)`` is to
+to find t |cong| A |cup| B, and show that this is the case.
 
-A |cup| B
+First, by elementary set theory let's note that A |cup| B
 = A |SquareUnion| (B \\ A)
 = B |SquareUnion| (A \\ B)
 = (A |cap| B) |SquareUnion| (B \\ A) |SquareUnion| (A \\ B)
 
 WLOG let's try to find some s |cong| A \\ B. Define o = lca2(a, b), O = anc*(o)
-= A |cap| B. Let p be some (as yet unknown) state such that p |cong| O, and by
-(1) we also have ``a.state`` |cong| A. Now O |subseteq| A so by (2.a) and the
-previous sentences, we have s = diff(p, ``a.state``) |cong| A \\ O = A \\ B.
+= A |cap| B. (Note here that o is also a node-set.) Let p be some (yet unknown)
+state such that p |cong| O. By (1) we also have ``a.state`` |cong| A. Now O
+|subseteq| A so by (2.a) and the previous sentences, we have s = diff(p,
+``a.state``) |cong| A \\ O = A \\ B.
 
-How do we find p? Well, if o is a singleton set, then p = ``o[0].state`` will
-satisfy what we wanted. If not, then by (3) ``merge(o)`` will also satisfy what
-we wanted (and o |subseteq| A, o |subseteq| B so this induction step will
-eventually reach a base case, and is therefore a valid step). Note that this is
-exactly what we did in ``merge2`` in the above code.
+How do we find p? Well, if o is a singleton set, then by (1) p = ``o[0].state``
+satisfies what we need. If not, then by (3) ``merge(o)`` also satisfies what we
+need - and o |subset| A, o |subset| B, due to our "anti-chain" assumption, so
+this induction step  eventually reaches a base case, and is therefore a valid
+step. (Notice that this is exactly how we defined ``merge2`` earlier.)
 
 Now we can find t. By (1) we have ``b.state`` |cong| B, and we just found s
 |cong| A \\ B. So by (2.b) we have apply(``b.state``, s) |cong| B |SquareUnion|
-(A \\ B) = A |cup| B. Or in other words, 3-way-merge(``p.state``, ``a.state``,
-``b.state``) |cong| A |cup| B. []
+(A \\ B) = A |cup| B. In other words, t = 3-way-merge(``p.state``, ``a.state``,
+``b.state``) |cong| A |cup| B. ∎
 
 We can extend this to show why ``fold-recurse`` |equiv| ``merge`` is correct,
 essentially by redoing the above proof with (A |cup| B) and C in place of A and
