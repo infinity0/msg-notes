@@ -72,9 +72,11 @@ to resolve.
 .. [#Nasync] It is probably true that asynchronous sessions *often* expect
     different security and timing/latency properties than synchronous sessions,
     but the former does not *necessarily* determine the latter. (TODO: give
-    examples). So we aim for strong security properties *and* the flexibility
-    of asynchronous operation. Further, all timing rules are proposed in terms
-    of an abstract basic time unit, which can be chosen by the application.
+    examples). Furthermore, these differences are *quantitative* and not
+    *qualitative* differences. So, we aim for strong security properties *and*
+    the flexibility of asynchronous operation, and propose all of our timing
+    rules are proposed in terms of an abstract basic time unit, which can be
+    chosen by the application based on what its timing/latency properties are.
 
 .. [#Nhash] These are implemented using cryptographic hashes, but the mentioned
     properties are the important interfaces to the overall scheme.
