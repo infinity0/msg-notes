@@ -11,12 +11,13 @@ Data structures
 Partial orders
 --------------
 
-A `partial ordering`_ is a set of elements with a binary relation |le| that is
-reflexive, antisymmetric, and transitive. For convenience, we also define |ge|
-(`after`) such that a |ge| b |iff| b |le| a, and |perp| (`independent`) such
-that a |perp| b |iff| (¬ a |le| b |and| ¬ a |ge| b). (Note that in a partial
-order, ¬ (a |le| b) does *not* imply a |ge| b. This is true however for `total
-orders` a.k.a. `linear orders`.)
+A **partial order** (`wikipedia
+<https://en.wikipedia.org/wiki/Partially_ordered_set>`_) is a set of elements
+with a binary relation |le| that is reflexive, antisymmetric, and transitive.
+For convenience, we also define |ge| (`after`) such that a |ge| b |iff| b |le|
+a, and |perp| (`independent`) such that a |perp| b |iff| (¬ a |le| b |and| ¬ a
+|ge| b). Note that in a partial order, ¬ (a |le| b) does *not* imply a |ge| b;
+this is true however for `total orders` a.k.a. `linear orders`.
 
 This can be visualised as a `directed acyclic graph`_ (DAG), where nodes
 represent the elements, and paths represent the relationships:
@@ -40,16 +41,16 @@ represent the elements, and paths represent the relationships:
 
 In the diagram above, where an edge a |leftarrow| b means that a |le| b,
 
-- red nodes (and m [#Nnat]_) are `before` m; all others are `not-before` m.
+- red nodes (and m [#lang]_) are `before` m; all others are `not-before` m.
 - green nodes (and m) are `after` m; all others are `not-after` m.
 - grey nodes are neither before nor after m, but `causally independent` of it.
 
-Using this structure, we can begin to develop our data model. Each node m |in|
-G represents a message [#Nsep]_. In terms of "real world" semantics, we define
-that a |le| b (a `before` b) means "the author of b knew the contents of a,
-when they wrote b". Because of transitivity, this also implies that they knew
-all the messages before a as well (when they wrote b). (We'll talk about how to
-enforce this in just a few sections.)
+Using this, we begin to define our data model and its "real world" semantics.
+Each node m |in| G represents a message [#rxtx]_; a |le| b (a `before` b) means
+"the author of b knew the contents of a, when they wrote b". Transitivity also
+implies that they knew all the messages before a as well (i.e. anc(a), see
+below), when they wrote b. We'll talk about how to *enforce* these semantics
+soon; for now we continue with its *structural properties*:
 
 To reduce visual clutter later, let's further define:
 
@@ -78,57 +79,28 @@ parents form an anti-chain, and that pre(m) |equiv| max(anc(m) \\ {m}). Over
 the whole session, it means that messages (nodes) and their parent references
 (edges) form a `transitive reduction`_ over the |le| relationship.
 
-.. [#ancg] Specifically, either we'll talk about one graph at a time, or we'll
-    talk about different versions of the same history graph G₀ |subseteq| G₁
-    where anc[G₀](m) |equiv| anc[G₁](m). This is broken when we finally get to
-    :doc:`05-visibility` so we'll bring back the [G] notation. This also
-    applies to the other terms we define here of the form xxx[G](m).
-
-Representation and security
----------------------------
-
-References must be globally consistent and immutable - i.e. to see a reference
-allows one to verify the message contents, and no-one can forge a different
-message for which the reference is valid, not even the original author. One
-simple implementation option is use a hash of the ciphertext as the reference.
-(Those familiar with Git will see the similarities with their model of
-immutable commit objects.) :ref:`encoding-message-identifiers` explores this
-and alternatives in more detail.
-
-There are two ways to know a valid reference - deriving it from the message
-contents, or seeing it elsewhere (e.g. in pre(m) of a child) *without having
-seen* the message itself. That is, a member could make a false declaration that
-they've seen a real message, if they see someone else refer to it - and no-one
-can detect whether this declaration is false or true. (Note that this is a
-distinct case from falsely declaring that one has seen a fake i.e non-existent
-message, which *can* be detected as described further below.)
-
-We assume that people won't do this - there is no strategic benefit in claiming
-to know something that you are entitled to know but temporarily don't. The
-worst that may happen is that someone issues a challenge you cannot answer, but
-only your reputation would suffer. Also, if you haven't seen the message, you
-are unable to verify that the reference is indeed valid, so someone else might
-be trying to trick *you*. However, if this security assessment turns out to be
-wrong, there are :ref:`measures <author-specific-message-identifiers>` we can
-take to close this hole, but they are more complex so we ignore them for now.
-
-.. _Partial ordering: https://en.wikipedia.org/wiki/Partially_ordered_set
-.. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
 .. _Directed acyclic graph: https://en.wikipedia.org/wiki/Directed_acyclic_graph
-.. _Anti-chain: https://en.wikipedia.org/wiki/Antichain
 .. _Light cone: https://en.wikipedia.org/wiki/Light_cone
+.. _Anti-chain: https://en.wikipedia.org/wiki/Antichain
+.. _Transitive reduction: https://en.wikipedia.org/wiki/Transitive_reduction
 
-.. [#Nsep] Some other systems treat send vs deliver (of each message m) as two
+.. [#lang] In natural language, |le| is really `before or equal to`. We say
+    `before` here because that's shorter. We use |le| instead of < because that
+    makes most formal descriptions shorter. Unless otherwise specified, we'll
+    use the terms `before` for |le| and `strictly before` for <, and likewise
+    for `after` and |ge|.
+
+.. [#rxtx] Some other systems treat send vs deliver (of each message m) as two
     separate events, but we don't do this for simplicity. We mandate that the
     author delivers m to itself *immediately* after they send it to others, so
     nobody will never see an event that is after send[m] but not-after
     deliver[m], nor an event that is before deliver[m] but not-before send[m].
 
-.. [#Nnat] In natural language, |le| is really `before or equal to`. We say
-    `before` here because that's shorter. We use |le| instead of < because that
-    makes most formal descriptions shorter. Unless otherwise specified, we'll
-    use the terms `before` for |le| and `strictly before` for <, and likewise
-    for `after` and |ge|.
+.. [#ancg] Specifically, either we'll talk about one graph at a time, or we'll
+    talk about different versions of the same history graph G₀ |subseteq| G₁
+    where anc[G₀](m) |equiv| anc[G₁](m). This is broken when we finally get to
+    :doc:`05-visibility` so we'll bring back the [G] notation. This also
+    applies to the other terms we define here of the form xxx[G](m).
 
 Causal orders
 -------------
@@ -143,9 +115,11 @@ In a **causal order**, each event m has exactly one **author(m)** and a set
   The set of all messages authored by u in G. This is totally-ordered on |le|
   i.e. every element is either before or after every other, so it can be
   represented as a list. This property constrains the number of branches that
-  may exist in any G, and helps it be "more linear". Unlike with anc[*](m) and
-  pre[*](m), this is generally not constant even if G₀ |subseteq| G₁, so
-  notation-wise we'll omit [G] less often.
+  may exist in any G, and helps it be "more linear", and we can use this to
+  prove performance bounds on various operations on G.
+
+  Unlike with anc[*](m) and pre[*](m), this is generally not constant even if
+  G₀ |subseteq| G₁, so notation-wise we'll omit [G] less often.
 
 **context[G](m)**: readers(m) |rightarrow| anc(m) = u |mapsto| max(by[G](u) |cap| anc[G](m))
   This is a mapping from each reader of m (call this u), to either:
@@ -222,10 +196,10 @@ consistency. If need be, we can locally calculate context(m) from pre(m), using
 the following algorithm: TODO: write this and link to the appendix.
 
 As a general principle, redundant information is a security liability: it must
-be checked for consistency, using the "canonical" sources of that information -
+be checked for consistency, using the canonical sources of that information -
 but then we might as well use those sources to directly calculate it. In these
 specific case, we see that enforcing immediacy and anti-chain parents actually
-lets us achieve some stronger guarantees "for free", i.e. protection against
+lets us achieve some stronger guarantees for free, i.e. protection against
 rewinding of vector clocks.
 
 .. _Vector clock: https://en.wikipedia.org/wiki/Vector_clock
@@ -235,39 +209,87 @@ Invariants
 
 To summarise, here are invariants on our *causal order* data structure.
 
-- |le| is reflexive:
-
+|le| is reflexive
   |forall| a: a |le| a
 
-- |le| is anti-symmetric:
-
+|le| is anti-symmetric:
   |forall| a, b: a |le| b |and| b |le| a |implies| a = b
 
-- |le| is transitive:
-
+|le| is transitive:
   |forall| a, b, c: a |le| b |and| b |le| c |implies| a |le| c
 
-- pre(m) is an anti-chain and forms a transitive reduction of |le|:
+pre(m) is an anti-chain; the history G forms a transitive reduction of |le|:
+  |forall| m: |forall| p, p' |in| pre(m): p = p' |or| p |perp| p'
 
-  |forall| m: |forall| p, p' |in| pre(m): p |perp| p'
-
-  as above, this entails context consistency
-
-- by(u) is a chain / total-order:
-
+by(u) is a chain / total-order:
   |forall| u: |forall| m, m' |in| by(u): m |le| m' |or| m' |le| m
 
+Security
+========
+
+Security dictates that we have some way to enforce the *real-world semantics*
+that we chose earlier, under the invariants defined above. Let's proceed:
+
+Enforcing semantics of |le|
+---------------------------
+
+a |le| b (real-world semantics)
+    The author of b knew the contents of a, when they wrote b.
+
+Our mechanism to achieve this securely (in a sense that we'll define) is as
+follows. First, we deduce that parent references must at least be immutable and
+unforgeable. That is, for a given message m that references p using a string
+s[p], it must be the case that an attacker that sees s[p] and wishes to break
+our semantics, cannot create a new message p' that s[p] could also refer to. If
+they could, then our semantics is trivially broken.
+
+One simple option to achieve this `unforgeable` property, is to let s[p] be a
+hash of the ciphertext of message p. Those familiar with Git will see the
+similarities with its data model. :ref:`encoding-message-identifiers` explores
+this and alternatives in more detail.
+
+This leaves attackers with two ways to know a valid reference s[p]: (1) derive
+it from its ciphertext, or (2) see it elsewhere, e.g. referenced by a child of
+p, *without having seen* p itself. (1) does not break our semantics, but (2)
+does. That is, in message m, the attacker could make a false declaration that
+they've seen a real message p (breaking our semantics), if they see someone
+else refer to p in a third message n where p |in| pre(n) - and no-one can
+detect whether this declaration is false or true. (Note that this is a distinct
+case from falsely declaring that one has seen a fake i.e non-existent message,
+which *can* be detected as described further below.)
+
+We assume that people won't do this - there is no strategic benefit in claiming
+to know something that you are entitled to know but temporarily don't. The
+worst that may happen is that someone issues a challenge you cannot answer, but
+only your reputation would suffer. Also, if you haven't seen the message, you
+are unable to verify that the reference is indeed valid, so someone else might
+be trying to trick *you*. If this security assessment turns out to be wrong,
+there are :ref:`measures <author-specific-message-identifiers>` we can take to
+close this hole, but they are more complex so we ignore them for now.
+
 Enforcing invariants
-====================
+--------------------
 
-TODO: distinguish between enforcing *structural* vs *semantic* invariants.
+First, note the distinction between enforcing the *structure* vs *semantics* of
+invariants. We enforce structure by writing correct code for our causal order
+data structure, and this can be statically checked e.g. that ``a <= a`` returns
+true for all ``a``. By contrast, enforcing semantic reflexivity means to
+enforce that: whenever our code does return true in response to executing ``a
+<= a``, this *also* has the real-world semantics that "the author of a knew the
+contents of a, when they wrote a".
 
-Reflexivity and anti-symmetry do not need run-time checks, but should be part
-of the statically-analysable behaviour of a particular implementation.
+For **reflexivity**, this is true by definition of our chosen semantics for
+|le|, as we just stated. No run-time checks are required.
 
-Enforcing transitivity means we must show messages to the user in `topological
+For **anti-symmetry**, we gain this if our parent references are unforgeable as
+required by the previous section. Then, there is no way to generate distinct
+messages a, b such that both a |le| b (i.e. b references a, perhaps indirectly)
+and b |le| a (likewise). This protection is achieved when we specify the hash
+algorithm for the protocol; no run-time checks are required.
+
+For **transitivity**, we must show messages to the user in `topological
 order`_. For each incoming m, if any of its parents p |in| pre(m) have not yet
-been delivered [#Ndlv]_, we place m in a buffer, and wait for all of pre(m) to
+been delivered [#dlvr]_, we place m in a buffer, and wait for all of pre(m) to
 be delivered first before delivering m. This allows us to verify that the
 parent references are actually of real messages. To protect against DoS, the
 buffer should be limited in size; see the next section for details.
@@ -280,7 +302,7 @@ to require m to mention *all* of anc(m), but obviously this costs too much
 bandwidth.) But earlier, we argued that there is no incentive for users to
 cheat this; we will make this assumption going forward.
 
-Enforcing transitive reduction can be done using only information from m and
+For **transitive reduction**, we do this locally using only information from
 anc(m). Since messages are only added to the data structure in topological
 order, everyone has this information so they can enforce it themselves.
 Messages that break this may simply be dropped, with a local UI warning as to
@@ -288,29 +310,40 @@ the source. The :ref:`merge algorithm for DAGs <merge-algorithm>` includes a
 check that the inputs form an anti-chain, and it may be run on the pre(m) of
 every message accepted, including for single-parent messages.
 
-Enforcing total ordering can be done only when someone accepts messages from
-both forks, which not everyone else might see. To help this propagate, users
-that see this condition, must re-broadcast all messages within both forks to
-everyone else, then leave the conversation with a BAIL error message (TODO:
-elaborate possible errors) that references both forks. Note that one of the
-references may have to be indirect if we already replied to the other fork, to
-preserve transitive reduction. We should never need to do this for a triple
-fork; bail should be immediate upon attempting to deliver a double fork. It is
-not essential that everyone receives this, since lack of future participation
-will indicate that something is wrong, but this helps to narrow down the cause.
+For **author total ordering**, this is detectable only when someone accepts
+messages in both forks, which not everyone else might see. Users detecting this
+*must* refuse to participate any further in the session, which (via mechanisms
+described in the next chapter) hints to other members that something is wrong.
+
+To help others narrow down the cause of this non-participation, the detecting
+user *should* re-broadcast all messages within both forks to everyone else,
+then leave the conversation with a NACK error message that references both
+forks. To be clear, this is not security-critical since these messages might be
+dropped by an attacker; its purpose is to give a UX improvement in the case
+where the attacker does not drop packets. Note that one of the references may
+have to be indirect if we already replied to the other fork, to preserve
+transitive reduction. We should never need to do this for a triple fork; NACK
+should be immediate upon detecting a double fork.
+
+(TODO: enumerate all possible error reasons for NACK messages)
 
 .. _Topological order: https://en.wikipedia.org/wiki/Topological_sort
 
-.. [#Ndlv] Here, "deliver" is standard distributed-systems terminology, and
+.. [#dlvr] Here, `deliver` is standard distributed-systems terminology, and
     means to make the message available to higher layers for subsequent
     operations, such as displaying in a UI. However, in colloquial messaging
     contexts, "deliver" sometimes means "remote completion of a send", e.g. as
-    in "delivery receipt"; so sometimes we'll use the term "accept" instead.
+    in "delivery receipt"; so sometimes we'll use the term `accept` instead for
+    the former concept.
 
 Detecting transport attacks
 ---------------------------
 
-By "transport attacks", we mean replays, re-orders, and drops of packets, by an
+Most of these are a straightforward consequences of the previous sections, but
+those are rather abstract so we'll re-describe them in terms of defences
+against "real-world" attacks.
+
+By `transport attacks`, we mean replays, re-orders, and drops of packets, by an
 attacker that can affect the physical communications infrastructure. We assume
 that external cryptographic authentication will allow us to detect packets
 injected by a non-member.
@@ -324,8 +357,8 @@ transcript graph. If we cache the ciphertext (and there is :ref:`reason to
 Enforcing transitivity is basically an exercise in correcting the order of
 messages, so we are already covered there.
 
-For drops, let's consider "causal drops" first - drops of messages that caused
-(are *before*) a message we *have* already received. Messages in the delivery
+For drops, let's consider `causal drops` first - drops of messages that caused
+(are `before`) a message we *have* already received. Messages in the delivery
 buffer will have three types of parents: those already accepted, those also in
 the buffer, and those that haven't been seen yet. For the last case, this is
 either because the parent p doesn't exist (the author is lying), or because the
@@ -356,7 +389,9 @@ complex, and we will cover this in :doc:`freshness <03-freshness>`.
 If the first message has replay protection (e.g. if it is fresh), we also
 inductively gain this for the entire session. This is because each message
 contains unforgeable references to previous parent messages, so everything is
-"anchored" to the first non-replayable message.
+"anchored" to the first non-replayable message. In other words, this ultimately
+depends on the session membership control protocol, which we discuss elsewhere.
+TODO: link
 
 Other topics
 ============
@@ -373,13 +408,18 @@ Buffering and asynchronous operation
 ------------------------------------
 
 Our strong ordering (transitivity) approach requires a reliable transport. If a
-message is dropped, this prevents later messages from being displayed. We can
-improve this with end-to-end recovery (explained :ref:`next <reliability>`),
-but this is less effective in an asynchronous scenario, i.e. where members may
-not online at the same time. We depend more heavily on a third-party service to
-store-and-forward messages in an intelligent way, e.g. to resend ciphertext
-even if the original author is offline. In the worst case where no two members
-are online simultaneously, this dependency becomes an absolute *requirement*.
+message is dropped, this prevents later messages from being displayed. Note
+that this is *not* a security concern, but a reliability one - if an attacker
+wants to prevent those messages from being displayed, and is able to drop the
+first message, they can just *drop the later messages* as well.
+
+We can improve reliability with end-to-end recovery (explained :ref:`next
+<reliability>`), but this is less effective in an asynchronous scenario, i.e.
+where members may not online at the same time. We depend more heavily on a
+third-party service to store-and-forward messages in an intelligent way, e.g.
+to resend ciphertext even if the original author is offline. In the worst case
+where no two members are online simultaneously, this dependency becomes an
+absolute *requirement*.
 
 Such a service must provide the interface "send ciphertext T to recipient R".
 By itself, this should not reduce data security, since we assume there is an
@@ -412,9 +452,9 @@ complex behaviour on the part of the always-online store-and-forward server.
 
 Other approaches forfeit reliability, and display messages immediately upon
 receipt even if received out-of-order. Such strategies necessarily break our
-strong ordering property which we consider critical, so we won't discuss them
-further here - but see :ref:`consistency-without-reliability` for a more
-detailed exploration down this path.
+strong ordering property which we consider critical to security, so we won't
+discuss them further here - but see :ref:`consistency-without-reliability` for
+a more detailed exploration down this path.
 
 The importance of strong ordering
 ---------------------------------
