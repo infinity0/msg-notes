@@ -121,36 +121,50 @@ In a **causal order**, each event m has exactly one **author(m)** and a set
   Unlike with anc[*](m) and pre[*](m), this is generally not constant even if
   G₀ |subseteq| G₁, so notation-wise we'll omit [G] less often.
 
-**context[G](m)**: readers(m) |rightarrow| anc(m) = u |mapsto| max(by[G](u) |cap| anc[G](m))
-  This is a mapping from each reader of m (call this u), to either:
+**context[G](m)**: members(m) |rightarrow| anc(m) = u |mapsto| max1(by[G](u) |cap| anc[G](m))
+  This is a mapping (a.k.a dictionary, associative array) from each member of m
+  (call this u), to:
 
+  - m itself, if u is the author of m; or else
   - the latest message authored by u, that was seen by the author of m when
-    they wrote m, or
+    they wrote m; or else
   - |bot| (`null`) if no such message exists.
 
-  Above, max() gives the (single) maximum element of a totally-ordered set, or
+  Above, max1() gives the (single) maximum element of a totally-ordered set, or
   |bot| if it is empty.
 
   As with anc[*](m) and pre[*](m), notation-wise we'll often omit [G] for the
   same reasons. [#ancg]_
 
-Context is semantically equivalent to a `vector clock`_. As with vector clocks,
-malicious authors may "rewind" the context they are supposed to declare with
-each message. If this redundant information is trusted, this enables certain
-re-ordering attacks. For example, I should not be allowed to claim that my
-last-received-from-A is 9, if I've already claimed that my last-received-from-B
-is 12, but in message 12, B claimed that their last-received-from-A is 10. (A
-more simple version of this with only 2 members is in the diagram below.)
+Context is semantically equivalent to a `vector clock`_ - a mapping from each
+entity to some representation of the latest event that the clock's owner saw
+from them. As with vector clocks, this contains redundant information, and may
+be locally calculated recursively from pre(m) as follows:
 
-To protect against this, we introduce *context consistency*: all messages must
-have a context that is strictly more advanced than the context of strictly
-earlier messages. Or, in other words, a message may not declare a parent that
-is before a parent of a strictly earlier message. Formally, we say a context c
-|sqsubset| c' (`strictly less advanced`) iff |forall| u: c(u) = |bot| |or| c(u)
-|le| c'(u) and c |ne| c'. Our security property `context consistency` means:
+context(m)[u] =
+  - if author(m) = u : m
+  - else: max1({ context(p)[u] | p |in| pre(m) } \\ {|bot|})
 
-|forall| m', m |in| <: context(m') |sqsubset| context(m) (or equivalently)
-|forall| p' |in| pre(m'), p |in| pre(m): ¬ p |le| p' (TODO: prove the equiv)
+TODO: probably move most of the rest of this section to the appendix, it
+doesn't add that much insight or new constructive models.
+
+But watch out! A minor "optimisation" will make this susceptible to re-ordering
+attacks:
+
+context(m)[u] =
+  - if author(m) = u : m
+  - else if (|exists| p |in| pre(m): author(p) = u) : p -- **insecure optimisation**
+  - else: max1({ context(p)[u] | p |in| pre(m) } \\ {|bot|})
+
+The attack allows malicious authors to `rewind` the context they are supposed
+to declare with each message; vector clocks can also suffer from this if the
+implementation makes too many naive assumptions.
+
+The problem stems from trusting pre(m) too much in the latter definition. For
+example, C should not be allowed to claim that their last-received-from-A is 9,
+if they've already claimed that their last-received-from-B is 12, but in
+message 12, B claimed that their last-received-from-A is 10. A more simple
+version of this with only 2 members is in the diagram below:
 
 .. digraph:: freshness_consistency
 
@@ -178,22 +192,40 @@ is before a parent of a strictly earlier message. Formally, we say a context c
     3 -> 2;
     4 -> 1 [color="#ff0000", headport=se, tailport=nw];
 
-Context consistency forbids the 1 |leftarrow| 4 reference. This may seem like
-quite a complex property to enforce, but actually we do not need to directly
-enforce it.
+We must forbid the 1 |leftarrow| 4 reference. More generally, we want context
+to always advance, never rewind. We'll call this *context consistency*, and
+formally it means:
 
-**Theorem**: *transitive reduction* entails *context consistency*. Proof
-sketch: if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since |le| is
-transitive, |forall| p' |in| pre(m'): p' < p |equiv| anc(p') |subset| anc(p).
-By transitive reduction, no other q |ne| p |in| pre(m) may belong to anc(p), so
-q |notin| anc(p') |equiv| ¬ q |le| p' (for all p', q) as required. ∎
+| |forall| m', m |in| G: m' < m |implies| context(m') |sqsubset| context(m) where
+| c' |sqsubset| c (c' is `strictly-less-advanced` than c) is defined as:
+| c' |ne| c |and| |forall| u: c'(u) = |bot| |or| c'(u) |le| c(u)
 
-Therefore, we do *not* encode context(m), since it can contain redundant
-information that must be checked. Instead, we encode pre(m) and mandate that it
-is an anti-chain; checking this is simpler (see below), occurs earlier for any
-given message that might be attacked, and *automatically* achieves context
-consistency. If need be, we can locally calculate context(m) from pre(m), using
-the following algorithm: TODO: write this and link to the appendix.
+A related concept is `parent consistency` - we must never reference parents of
+strictly-earlier messages, since it is redundant and we should instead simply
+reference the strictly-earlier message itself. Formally:
+
+|forall| m', m |in| G: m' < m |implies| |forall| p' |in| pre(m'), p |in|
+pre(m): ¬ p |le| p'
+
+These properties are quite complex. But we don't have to check them directly:
+
+**Theorem**: `transitive reduction` entails `parent consistency`. Proof sketch:
+if m' < m then |exists| p |in| pre(m): m' |le| p < m. Since |le| is transitive,
+|forall| p' |in| pre(m'): p' < p |equiv| anc(p') |subset| anc(p). By transitive
+reduction, no other q |ne| p |in| pre(m) may belong to anc(p), i.e. |forall| q
+|ne| p |in| pre(m): q |notin| anc(p') |equiv| ¬ q |le| p'. Earlier we had p' <
+p so this holds even if q = p, i.e. |forall| q |in| pre(m): ¬ q |le| p'. ∎
+
+**Theorem**: `parent consistency` entails `context consistency`, even if using
+the insecure optimisation above. (If using our original secure definitions, it
+holds regardless of `parent consistency`.) Proof sketch: this is long-winded
+and not interesting or insightful; do it later and put it in the appendix.
+
+Based on this result, we mandate that real encodings of m *must not* encode
+context(m) but only pre(m), and readers must check that it is an anti-chain
+(see below) before committing it to their local history graph. This way, we get
+the other two properties for free. If needed, we can calculate context(m) from
+pre(m) locally, and this remains secure regardless of naive optimisations.
 
 As a general principle, redundant information is a security liability: it must
 be checked for consistency, using the canonical sources of that information -
