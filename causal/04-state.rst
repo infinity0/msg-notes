@@ -46,7 +46,7 @@ history. Applying this to group sessions and version control, we have:
 In some sense, the messages (union of events) is the "main focus" of our
 system, but membership (dynamic state) is also quite important - and where the
 hard problems lie. Luckily, in DVCSs it's the commit tree content (dynamic
-state) that is the "main focus" of those systems, and we can use solutions
+state) that is the "main focus" of those systems, and we can use solutions from
 there to inspire solutions for the analogous problems in ours.
 
 It's not immediately obvious that there is an "aggregated form" of the tree
@@ -62,18 +62,17 @@ is to define "the" state of a forked history G, in line with our analogies:
     Current session membership at G, i.e. after having received/accepted all
     messages in G, and no other messages.
 
-In other words, we need an algorithm merge(X) to merge the state of a set of
-nodes, like the ones that exist in modern DVCSs. Furthermore, the algorithm
-must never require manual conflict resolution - we must have a result *before*
-the user writes any message.
+Now, we need an algorithm merge[G](X) to merge the state of a set of nodes,
+like the ones that exist in modern DVCSs. Furthermore, the algorithm must never
+require manual conflict resolution - we must have a result *before* the user
+writes any message.
 
 From here on, we'll ignore the `type 1` column and message content. When we
 refer to the "state" of a node, we mean the `type 2` state, and when we refer
 to "merged state", we mean the aggregated state. In our group session system,
 `state` represents a set of members, but for now to keep things simple, we'll
-ignore this and mostly talk about an opaque semantics-free `state`.
-
-To re-state our aim in these terms, we are trying to define a function:
+ignore this and mostly talk about an opaque semantics-free `state`. To re-state
+our aim in these terms, we want to define a function:
 
 **merge[G](X)** -- where:
     - G is a :doc:`partial order <01-ordering>` history graph, where each node
@@ -162,9 +161,9 @@ unordered set, and try to define 3-way-merge for this data type.
 It's fairly straightforward to check that this satisfies our invariants above.
 To check symmetry with respect to {a, b}, it helps to draw a Venn diagram.
 
-This is well defined for all arguments, and no conflicts can result from this
-algorithm. Looks like we got lucky, great! So let's use this for now as our
-state data type, and proceed onto other topics.
+We're in luck - this is well-defined for all arguments, and no conflicts can
+result from this algorithm. So let's use this for now as our state data type,
+and continue with the rest of the merge algorithm.
 
 .. [#mhst] If the `state` data type does not allow `undo` operations, then we
     can get by without knowing history. This is exactly how state-based CRDTs
@@ -182,8 +181,6 @@ state data type, and proceed onto other topics.
 
     If these paragraphs confused you, just ignore them and ignore state-based
     CRDTs; it's not essential for understanding the rest of this document.
-
-.. _merge-algorithm:
 
 General merge
 =============
@@ -204,15 +201,15 @@ things are looking pretty good for our original requirements.
 
 We didn't invent this algorithm ourselves: git did the hard work, via years of
 mailing list discussions and engineering experience. However, it's unclear if
-they knew this was the *correct* solution or just an heuristic: even now, ``man
+they know this is a *correct* solution or just an heuristic: even now, ``man
 git-merge`` says "[the default merge algorithm] has been reported to result in
 fewer merge conflicts without causing mismerges by tests done on actual merge
 commits taken from Linux 2.6 kernel development history."
 
 Our novel contribution here then, is a proof sketch that this merge algorithm
-is *correct* and *unique*, derived from some fairly simple proposals on how
-"reasonable" merge algorithms should behave. We'll get to that later; we first
-go through a more "blind" derivation, that's hopefully more intuitive if you
+is indeed *correct* and *unique*, derived from some fairly simple proposals on
+how "reasonable" merge algorithms should behave. We'll get to that later; first
+we go through a more "blind" derivation, that's hopefully more intuitive if you
 haven't seen how this works before.
 
 To restate our problem, we want to define::
@@ -253,10 +250,10 @@ To make our lives easier, let's derive a simpler form first::
     def merge2(G, a: node, b: node) -> state:
       O = lca2(G, a, b) # calculate parent node(s), for 3-way-merge
       if size(O) == 1: # base case
-        o = O[0]
+        os = O[0].state
       if size(O) >= 2: # recurse!
-        o = merge(G, O)
-      return 3-way-merge(o.state, a.state, b.state)
+        os = merge(G, O)
+      return 3-way-merge(os, a.state, b.state)
 
 There, that wasn't so hard. But now how do we turn ``merge2`` into ``merge``?
 As in many other areas of computer science, if we have a binary operation, we
@@ -273,9 +270,9 @@ have to do some minor fiddling as well::
 .. _fold: https://en.wikipedia.org/wiki/Fold_%28higher-order_function%29
 
 "new temp node" means to create a temporary node in G just for the duration of
-``fold``, so that it has something to work with. We optimise this out in the
-real version (and G is immutable anyway), but the basic idea is the same and
-you can look at our source code to see the difference. TODO: link
+``fold``, so that it has something to work with. We'll get rid of this soon
+below (in a real implementation G should be immutable anyway) but for now this
+gives a good intuition on how the algorithm works.
 
 But wait, there's another way of applying the ``fold``. Instead of applying it
 to ``merge2``, we apply it *inside* ``merge2``, to ``3-way-merge`` which is
@@ -288,11 +285,11 @@ also a binary operation (if we fix the ``o`` argument)::
     def merge-recurse-fold(G, X: [node]) -> state:
       O = lca(G, X) # calculate the parent node / nodes
       if size(O) == 1: # base case
-        o = O[0]
+        os = O[0].state
       if size(O) >= 2: # recurse!
-        o = merge-recurse-fold(G, O)
+        os = merge-recurse-fold(G, O)
       def 3-way-merge-with-o(a: node, b: node) -> node:
-        s = 3-way-merge(o.state, a.state, b.state)
+        s = 3-way-merge(os, a.state, b.state)
         return "new temp node" in G with state = s, parents = {a, b}
       return fold(3-way-merge-with-o, X).state
 
@@ -375,14 +372,28 @@ Now we can find t. By (1) we have ``b.state`` |cong| B, and we just found s
 (A \\ B) = A |cup| B. In other words, t = 3-way-merge(``p.state``, ``a.state``,
 ``b.state``) |cong| A |cup| B. ∎
 
-We can extend this to show why ``fold-recurse`` |equiv| ``merge`` is correct,
-essentially by redoing the above proof with (A |cup| B) and C in place of A and
-B, when trying to merge X = {a, b, c}, and so on. Similar reasoning also tells
-us why ``recurse-fold`` is wrong, because when we execute ``O = lca(X)``, this
-is analogous to finding O = A |cap| B |cap| C (``O`` |ne| O, but related), then
-trying to calculate t |cong| A |cup| B |cup| C by finding diffs |cong| to each
-component of the expression O |SquareUnion| (A \\ O) |SquareUnion| (B \\ O)
-|SquareUnion| (C \\ O) - but this is clearly not equal to A |cup| B |cup| C.
+To extend this to three arguments, imagine that we redo the proof, but with (A
+|cup| B) and C in place of A and B, and with ``merge2(a, b)`` (which we just
+proved) in place of ``a.state``. We will find that we need some o such that O =
+anc*(o) = (A |cup| B) |cap| C. In our 2-arg proof, this was o = lca2(a, b). In
+our 3-arg proof, this must be instead be o = lcaU({a, b}, c), where:
+
+lcaU(A, b)
+    | = max({ v |in| G | v |in| anc(b) |and| v |in| anc*(A)})
+    | = max({ v |in| G | v |le| b |and| v |le| a for some a |in| A })
+
+Then, the rest of the proof follows exactly as for the 2-arg case. We can also
+see that the result is the same regardless of the order of arguments - in all
+cases, we are finding some t |cong| anc*({a, b, c}). We can deduce by further
+induction, that ``fold-recurse`` |equiv| ``merge`` is correct, and symmetric
+with respect to the order of its arguments. ∎
+
+Similar lines of reasoning also tell us why ``recurse-fold`` is wrong, because
+when we execute ``O = lca(X)``, this is analogous to finding O = A |cap| B
+|cap| C (``O`` |ne| O, but related), then trying to calculate t |cong| A |cup|
+B |cup| C by finding diffs |cong| to each component of the expression O
+|SquareUnion| (A \\ O) |SquareUnion| (B \\ O) |SquareUnion| (C \\ O) - but this
+is clearly not equal to A |cup| B |cup| C.
 
 As a concrete example, see:
 
@@ -409,41 +420,68 @@ As a concrete example, see:
 For the green node trying to merge the blue nodes, ``fold-recurse`` gives the
 correct answer {abuv}, but ``recurse-fold`` gives {auv}.
 
-Checking anti-chain of inputs
------------------------------
+.. _merge-algorithm:
 
-TODO: detect this when calculating lca2.
+Complete algorithm
+------------------
 
-TODO: prove that this extends to the n-ary case, inside fold().
+Using lcaU from our above proof, we can get rid of our earlier "new temp node"
+shenanigans. Sadly, we can no longer use fold and must iterate manually::
+
+    def lcaU(G, A: {node}, b: node) -> {node}:
+      assert A non-empty
+      # lowest common ancestors of a node-set and a node
+      return max({ v in G | v <= b and v <= a for some a in A })
+
+    def mergeU(G, A: {node}, as: state, b: node) -> state:
+      if A empty:
+        return b.state
+      O = lcaU(G, A, b) # calculate parent node(s), for 3-way-merge
+      CHECK( O & (A | {b}) is empty ) # anti-chain check, see below
+      o = merge(G, O) # recurse up, to ancestors
+      return 3-way-merge(o, as, b.state)
+
+    def merge_(G, B: {node}, A: {node}, as: state) -> state:
+      if B empty:
+        return as
+      b = choose_any_element(B)
+      s = mergeU(A, as, b)
+      return merge_(G, B - {b}, A | {b}, s) # tail recurse sideways, to remaining args
+
+    def merge(G, X: {node}) -> state:
+      return merge_(G, X, {}, default-state)
+      # we could short-cut and check if X is empty or a singleton, but these
+      # cases are in fact already covered in the child functions
+
+Now we can check that each input set is an anti-chain. Consider lcaU(A, b) and
+suppose we know A is an anti-chain. Then, if a |le| b for any a |in| A, either
+a or b will be within the result of ``lcaU``. Equivalently, if lcaU(A, b) |cap|
+(A |cup| {b}) = |emptyset|, then we know that b is causally independent of all
+a |in| A. If we add this check to ``mergeU``, then ``merge_`` will start with a
+base case A = |emptyset| which is an anti-chain, and as it processes elements
+from B and moves them into A, it will by induction check all pairs (x, x') |in|
+X for causal independence.
 
 For our group session, we reject such inputs because they break our protocol
-invariants. An alternative (that other systems like DVCSs would prefer) is to
-ignore the extraneous older nodes, and run the merge algorithm as if the inputs
-were max(anc*(X)) instead - which is definitely an anti-chain.
+invariants, and CHECK simply throws an exception to be handled further up the
+stack. [#tred]_ During run-time, whenever we accept a message m, we must check
+that merge(pre(m)) does not throw an exception. This enforces the transitive
+reduction property, as promised in the first chapter.
 
-Commutativity and associativity
--------------------------------
+Note: certain extreme history graphs can cause our recursive definition for
+``merge`` to stack overflow. It is possible to implement ``merge`` iteratively,
+but recursion from ``mergeU`` back to ``merge`` forces such an implementation
+to be very complex and hard to understand. A better solution is to simply add
+an LRU cache to ``merge``. This is sufficient to prevent overflow, as long as
+we run the aforementioned merge(pre(m)) check for every incoming message.
 
-``merge2`` is commutative and associative, and therefore ``merge`` doesn't care
-about the order of the input list (and so we can pass in a set instead). This
-is basically what we wanted and expected.
+To summarise, if we fulfill the following requirements:
 
-TODO: prove this, probably from the fact that 3-way-merge is commutative.
+- We have a partial order G on state-update events (nodes).
 
-TODO: iterative vs recursive implementations, stack overflows...
+- We provide a ternary operator `3-way-merge` on states which obeys: [#idem]_
 
-Summary
--------
-
-General merge algorithm over a partially-ordered history graph
-
-Requirements:
-
-- there is a partial order on state-update events.
-
-- there exists a ternary operator `3-way-merge` on states which obeys
-
-  Identity under a fixed first argument
+  Identity under the fixed first argument
     |forall| o, a: 3-way-merge(o, a, o) = 3-way-merge(o, o, a) = a
 
   Commutative under a fixed first argument
@@ -452,25 +490,40 @@ Requirements:
   Alternatively, see :ref:`the appendix <diff-apply-model>` for the equivalent
   model stated in terms of `diff` and `apply` operations.
 
-- This is not strictly necessary:
+Then we can define `merge` as ``merge`` from the pseudo-code above. Its
+properties are:
 
-  `Idempotent <https://en.wikipedia.org/wiki/Idempotence>`_ under a fixed first argument
-    |forall| o, a: 3-way-merge(o, a, a) = a
+- commutative - the input is an unordered set.
 
-  - We have it "by accident" because 3-way-merge on unordered sets happen to be
-    idempotent, but this doesn't affect our derivation of the general merge
-    algorithm, nor any other results in this chapter.
+- associative, in some sense. That is, the following two are equivalent, for
+  all node-sets A, B:
 
-  - State-based CRDTs mandate it because their parent systems can't deduplicate
-    identical events received more than once; but we can do this - it is a
-    necessary aspect of protecting against replay attacks
+  - merge(A |cup| B)
+  - merge({v} |cup| B) where v = new node { parents = A, state = merge(A) }
 
-Consequences:
+- conflict-free (i.e. never returns |bot|) if 3-way-merge is conflict-free
 
-- The merge algorithm is associative. One has to fiddle with the definition a
-  little bit, as follows:
+.. [#tred] For other systems, such as DVCSs, this is not such a crucial error;
+    they can instead ignore the extraneous older nodes, and run the algorithm
+    as if the inputs were max(anc*(X)) - which is definitely an anti-chain.
+    Tweaking our algorithm to do this efficiently is left as an exercise, but
+    note that it is not enough to let CHECK continue or e.g. ``return as``.
 
-  TODO
+.. [#idem] There is another nice property for 3-way-merge to have, but it's not
+    strictly necessary:
+
+    `Idempotent <https://en.wikipedia.org/wiki/Idempotence>`_ under a fixed first argument
+      |forall| o, a: 3-way-merge(o, a, a) = a
+
+    If this holds, then `merge` is also idempotent (i.e. merge(X) = a, if
+    |forall| x |in| X: ``x.state`` = a). We actually do have both of these "by
+    accident" because 3-way-merge on unordered sets happens to be idempotent,
+    but it's not a *necessary* property. It has no effect on our derivation of
+    the general merge algorithm, nor any other results here.
+
+    State-based CRDTs do mandate this because their systems can't deduplicate
+    identical events received more than once. We *can* do this though - and
+    it's a necessary aspect of protecting against replay attacks.
 
 Other topics
 ============
@@ -494,7 +547,7 @@ forked histories without ever having explicitly run ``git branch``.
 
 If we avoid merges, we in effect assert that different scenarios (accidental vs
 conscious forks) are equivalent. This prevents the user from expressing their
-intentions accurately. Therefore, this is an unacceptable design choice.
+intentions accurately, and we consider this an unacceptable design choice.
 
 .. _comparison-vs-crdts:
 
