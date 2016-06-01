@@ -26,7 +26,7 @@
     <link rel="top" title="msg-notes 0.0.0 documentation" href="../index.html" />
     <link rel="up" title="Causal ordering" href="index.html" />
     <link rel="next" title="Applications" href="06-application.html" />
-    <link rel="prev" title="Pseudo-mutable state" href="04-state.html" /> 
+    <link rel="prev" title="History and state" href="04-state.html" /> 
   </head>
   <body role="document">
     <div class="related" role="navigation" aria-label="related navigation">
@@ -39,7 +39,7 @@
           <a href="06-application.html" title="Applications"
              accesskey="N">next</a> |</li>
         <li class="right" >
-          <a href="04-state.html" title="Pseudo-mutable state"
+          <a href="04-state.html" title="History and state"
              accesskey="P">previous</a> |</li>
         <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
           <li class="nav-item nav-item-1"><a href="index.html" accesskey="U">Causal ordering</a> &raquo;</li> 
@@ -53,11 +53,13 @@
             
   <div class="section" id="partial-visibility">
 <h1>Partial visibility<a class="headerlink" href="#partial-visibility" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="member-sets">
-<h2>Member-sets<a class="headerlink" href="#member-sets" title="Permalink to this headline">¶</a></h2>
-<ul class="simple">
-<li>diff and apply</li>
-</ul>
+<div class="section" id="representation">
+<h2>Representation<a class="headerlink" href="#representation" title="Permalink to this headline">¶</a></h2>
+<p>Member-sets, diff and apply</p>
+<p>For any given message m, some parents might not be visible to some of the
+members. Do we also hide the parent references then? How to represent this.</p>
+<p>Security properties we need to keep in mind, and how to achieve these - e.g.
+can&#8217;t allow <em>arbitrary</em> different parent pointers for different members.</p>
 </div>
 <div class="section" id="operations-on-the-causal-order">
 <h2>Operations on the causal order<a class="headerlink" href="#operations-on-the-causal-order" title="Permalink to this headline">¶</a></h2>
@@ -65,57 +67,135 @@
 <p>Expand definition of &#8220;acked-by&#8221;.</p>
 <p>Expand algorithms for FIN/ACK.</p>
 </div>
-<div class="section" id="subjective-vs-objective-views">
-<h2>Subjective vs objective views<a class="headerlink" href="#subjective-vs-objective-views" title="Permalink to this headline">¶</a></h2>
-<ul class="simple">
-<li>Rejoin semantics</li>
-</ul>
+<div class="section" id="rejoin-semantics">
+<h2>Rejoin semantics<a class="headerlink" href="#rejoin-semantics" title="Permalink to this headline">¶</a></h2>
+<p>Unclear what &#8220;parent-pointer&#8221; semantics should be, e.g. when I rejoin, should I
+&#8220;point to&#8221; my last message from before I left? Probably not - unclear what the
+semantics are, not intuitive, etc.. but could explore further.</p>
+<p>If we do disallow the above, we then need to adjust &#8220;by(u) is a total order&#8221;
+checks. In both cases (allow vs disallow), other members should still be able
+to identify &#8220;this is the same person&#8221; across both sub-sessions. (This is for
+usability and convenience; if you must be anonymous just rotate public keys.)</p>
 </div>
 <div class="section" id="merge-algorithm">
 <h2>Merge algorithm<a class="headerlink" href="#merge-algorithm" title="Permalink to this headline">¶</a></h2>
-<p>Under partial visibility, our merge algorithm from the previous section does not work consistently:</p>
-<p>In the following example, b has full visibility of the history, and can execute the merge as normal:</p>
+<p>Under partial visibility, our merge algorithm from the previous section does
+not work consistently. Here are some examples that indicate the problem.</p>
+<p>(Taken literally, they ignore that by(u) must be a total order; but we can
+regain this property by rewriting &#8220;a&#8221; instead as multiple members {a1, a2, a3,
+...}, however many is necessary. But for our current purposes, it&#8217;s easier to
+follow if we shortcut this and just write &#8220;a&#8221; instead.)</p>
+<p>In this example, a has full visibility of the history, and can execute
+the merge as normal:</p>
+<p>TODO: simplify this example</p>
 <p class="graphviz">
-<img src="../_images/graphviz-e4d63245621dddbd120cc824bf9424badc6fc89f.png" alt="digraph merge_full_visibility {
-rankdir=BT;
+<img src="../_images/graphviz-1e3a297fb55a7fb9dfe9065eca04f34bfa08ab35.png" alt="digraph merge_full_visibility {
+rankdir=RL;
 node [style=&quot;filled&quot;];
+label=&quot;visible to a, not b&quot;;
 
-O [label=&quot;b&quot;];
-A [label=&quot;abc&quot;];
-A1 [label=&quot;ab&quot;];
-A2 [label=&quot;bc&quot;];
-B [label=&quot;bd&quot;];
-C [label=&quot;abd&quot;,fillcolor=&quot;#6666ff&quot;];
-D [label=&quot;bcd&quot;,fillcolor=&quot;#6666ff&quot;];
-X [label=&quot;bd&quot;,fillcolor=&quot;#66ff66&quot;];
-A -&gt; O [label=&quot;+ac&quot;];
-B -&gt; O [label=&quot;+d&quot;];
-A1 -&gt; A [label=&quot;-c&quot;];
-A2 -&gt; A [label=&quot;-a&quot;];
-C -&gt; B [color=&quot;#666666&quot;];
-D -&gt; B [color=&quot;#666666&quot;];
+O [label=&quot;a&quot;];
+A [label=&quot;auv&quot;];
+A1 [label=&quot;au&quot;];
+A2 [label=&quot;av&quot;];
+A -&gt; O [label=&quot;+uv&quot;];
+A1 -&gt; A [label=&quot;-v&quot;];
+A2 -&gt; A [label=&quot;-u&quot;];
+subgraph cluster_d {
+  label=&quot;visible to a, b&quot;;
+  B [label=&quot;ab&quot;];
+  C [label=&quot;abu&quot;,fillcolor=&quot;#6666ff&quot;];
+  D [label=&quot;abv&quot;,fillcolor=&quot;#6666ff&quot;];
+  X [label=&quot;ab&quot;,fillcolor=&quot;#66ff66&quot;];
+  C -&gt; B [color=&quot;#666666&quot;];
+  D -&gt; B [color=&quot;#666666&quot;];
+  X -&gt; C [color=&quot;#666666&quot;];
+  X -&gt; D [color=&quot;#666666&quot;];
+}
+B -&gt; O [label=&quot;+b&quot;];
 C -&gt; A1 [color=&quot;#666666&quot;];
 D -&gt; A2 [color=&quot;#666666&quot;];
-X -&gt; C [color=&quot;#666666&quot;];
-X -&gt; D [color=&quot;#666666&quot;];
 }" />
 </p>
-<p>But when d executes the merge, he has an incomplete view of history:</p>
+<p>But if b executes the merge, they have an incomplete view of history, and get a
+different result:</p>
 <p class="graphviz">
-<img src="../_images/graphviz-562c4057a30384e12b5935a27904171e3cbc0f3e.png" alt="digraph merge_partial_visibility {
-rankdir=BT;
+<img src="../_images/graphviz-81e515f7a687f686251d1aa2e64ec49b880fc582.png" alt="digraph merge_partial_visibility {
+rankdir=RL;
 node [style=&quot;filled&quot;];
 
-B0 [label=&quot;bd&quot;];
-C0 [label=&quot;abd&quot;,fillcolor=&quot;#6666ff&quot;];
-D0 [label=&quot;bcd&quot;,fillcolor=&quot;#6666ff&quot;];
-X0 [label=&quot;abcd&quot;,fillcolor=&quot;#66ff66&quot;];
-C0 -&gt; B0 [label=&quot;+a&quot;];
-D0 -&gt; B0 [label=&quot;+c&quot;];
+B0 [label=&quot;ab&quot;];
+C0 [label=&quot;abu&quot;,fillcolor=&quot;#6666ff&quot;];
+D0 [label=&quot;abv&quot;,fillcolor=&quot;#6666ff&quot;];
+X0 [label=&quot;abuv&quot;,fillcolor=&quot;#66ff66&quot;];
+C0 -&gt; B0 [label=&quot;\&quot;+u\&quot;&quot;];
+D0 -&gt; B0 [label=&quot;\&quot;+v\&quot;&quot;];
 X0 -&gt; C0 [color=&quot;#666666&quot;];
 X0 -&gt; D0 [color=&quot;#666666&quot;];
 }" />
 </p>
+<p>Furthermore, b cannot distinguish between this history, vs an alternative
+history where a does actually get the same result as b:</p>
+<p class="graphviz">
+<img src="../_images/graphviz-cf9f964b8a4baa7339c60766bed3a3d761ba138e.png" alt="digraph merge_full_visibility_alternative {
+rankdir=RL;
+node [style=&quot;filled&quot;];
+label=&quot;visible to a, not b&quot;;
+
+O [label=&quot;a&quot;];
+A1 [label=&quot;au&quot;];
+A2 [label=&quot;av&quot;];
+A1 -&gt; O [label=&quot;+u&quot;];
+A2 -&gt; O [label=&quot;+v&quot;];
+subgraph cluster_d {
+  label=&quot;visible to a, b&quot;;
+  B [label=&quot;ab&quot;];
+  C [label=&quot;abu&quot;,fillcolor=&quot;#6666ff&quot;];
+  D [label=&quot;abv&quot;,fillcolor=&quot;#6666ff&quot;];
+  X [label=&quot;abuv&quot;,fillcolor=&quot;#66ff66&quot;];
+  C -&gt; B [color=&quot;#666666&quot;];
+  D -&gt; B [color=&quot;#666666&quot;];
+  X -&gt; C [color=&quot;#666666&quot;];
+  X -&gt; D [color=&quot;#666666&quot;];
+}
+B -&gt; O [label=&quot;+b&quot;];
+C -&gt; A1 [color=&quot;#666666&quot;];
+D -&gt; A2 [color=&quot;#666666&quot;];
+}" />
+</p>
+<p>Notice how the subgraph &#8220;visible to a, b&#8221; is identical in both cases, including
+even its edges to nodes outside the subgraph. We conclude that there is no way
+for &#8220;b&#8221; to properly execute the merge algorithm.</p>
+</div>
+<div class="section" id="further-options">
+<h2>Further options<a class="headerlink" href="#further-options" title="Permalink to this headline">¶</a></h2>
+<p>At this point maybe we want to go back to exploring CRDTs, since they don&#8217;t
+require history.</p>
+<p>Another option is to force the state representation to increase along a partial
+order, in the same way that state-based CRDTs do. For example, instead of
+representing <code class="docutils literal"><span class="pre">{a,</span> <span class="pre">b,</span> <span class="pre">u}</span></code> in the first graph above, we could represent it as
+<code class="docutils literal"><span class="pre">{a:</span> <span class="pre">1,</span> <span class="pre">b:</span> <span class="pre">1,</span> <span class="pre">u:</span> <span class="pre">1,</span> <span class="pre">v:</span> <span class="pre">-1}</span></code> where:</p>
+<ul class="simple">
+<li>e.g. <code class="docutils literal"><span class="pre">1</span></code> means they are a member of that message, and have been included 1
+times before</li>
+<li>e.g. <code class="docutils literal"><span class="pre">-1</span></code> means they are not a member of that message, but previously was,
+and have been excluded 1 times before.</li>
+</ul>
+<p>This would allow b to execute the merge correctly. However it reveals to them
+that v was part of the previous sub-session, which is what we were trying to
+avoid <a class="footnote-reference" href="#mabu" id="id1">[1]</a>. Nevertheless, we do still retain message {contents, history}
+privacy against b. (TODO: there is probably a CRDT that is equivalent to this.)</p>
+<table class="docutils footnote" frame="void" id="mabu" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td>In our example there is also a message with members <code class="docutils literal"><span class="pre">abv</span></code> that b
+sees, so b will find out regardless - but the author of the message with
+members <code class="docutils literal"><span class="pre">abu</span></code> <em>cannot</em> rely on this fact in general.</td></tr>
+</tbody>
+</table>
+<p>TODO: write up some reasons that we partially figured out, on why it&#8217;s probably
+impossible to avoid this privacy leak to b, if we want everyone to keep a
+consistent view of the session.</p>
 </div>
 </div>
 
@@ -128,17 +208,18 @@ X0 -&gt; D0 [color=&quot;#666666&quot;];
   <h3><a href="../index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">Partial visibility</a><ul>
-<li><a class="reference internal" href="#member-sets">Member-sets</a></li>
+<li><a class="reference internal" href="#representation">Representation</a></li>
 <li><a class="reference internal" href="#operations-on-the-causal-order">Operations on the causal order</a></li>
-<li><a class="reference internal" href="#subjective-vs-objective-views">Subjective vs objective views</a></li>
+<li><a class="reference internal" href="#rejoin-semantics">Rejoin semantics</a></li>
 <li><a class="reference internal" href="#merge-algorithm">Merge algorithm</a></li>
+<li><a class="reference internal" href="#further-options">Further options</a></li>
 </ul>
 </li>
 </ul>
 
   <h4>Previous topic</h4>
   <p class="topless"><a href="04-state.html"
-                        title="previous chapter">Pseudo-mutable state</a></p>
+                        title="previous chapter">History and state</a></p>
   <h4>Next topic</h4>
   <p class="topless"><a href="06-application.html"
                         title="next chapter">Applications</a></p>
@@ -176,7 +257,7 @@ X0 -&gt; D0 [color=&quot;#666666&quot;];
           <a href="06-application.html" title="Applications"
              >next</a> |</li>
         <li class="right" >
-          <a href="04-state.html" title="Pseudo-mutable state"
+          <a href="04-state.html" title="History and state"
              >previous</a> |</li>
         <li class="nav-item nav-item-0"><a href="../index.html">msg-notes 0.0.0 documentation</a> &raquo;</li>
           <li class="nav-item nav-item-1"><a href="index.html" >Causal ordering</a> &raquo;</li> 
@@ -184,7 +265,7 @@ X0 -&gt; D0 [color=&quot;#666666&quot;];
     </div>
     <div class="footer" role="contentinfo">
         &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.6.
     </div>
   </body>
 </html>

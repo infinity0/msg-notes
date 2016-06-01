@@ -55,6 +55,75 @@
 <h1>Proofs<a class="headerlink" href="#proofs" title="Permalink to this headline">¶</a></h1>
 <div class="section" id="causal-ordering">
 <h2>Causal ordering<a class="headerlink" href="#causal-ordering" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="formal-model-for-diff-and-apply">
+<span id="diff-apply-model"></span><h3>Formal model for diff and apply<a class="headerlink" href="#formal-model-for-diff-and-apply" title="Permalink to this headline">¶</a></h3>
+<p>This is similar to, but not exactly the same as, darcs&#8217; <cite>theory of patches</cite>.
+Their theory is more developed with more &#8220;useful&#8221; results, but is also places
+more constraints on what valid patches are.</p>
+<p>We try to be more general (less constrained), to demonstrate that the rest of
+our work depends on fewer assumptions than their model. For example, we don&#8217;t
+need a notion of &#8220;compose two patches into another patch&#8221;, and we only have
+partial notions of &#8220;applying n patches is equivalent to &lt;n other patches&#8221;.</p>
+<p>Objects of our investigation:</p>
+<dl class="docutils">
+<dt>S</dt>
+<dd>set of all possible states</dd>
+<dt>D</dt>
+<dd>set of all possible patches</dd>
+<dt>▵ :: S x S → D</dt>
+<dd>binary operation: diff an earlier state with a later state; always succeeds</dd>
+<dt>· :: S x D → S ∪ {⊥}</dt>
+<dd>binary operation: apply a patch to a state; may fail, represented by ⊥</dd>
+</dl>
+<p>Axioms:</p>
+<ol class="arabic">
+<li><p class="first">Zero diff</p>
+<p>∀ s ∈ S: s ▵ s = 0</p>
+</li>
+<li><p class="first">Diff-apply conversion</p>
+<p>∀ s, t ∈ S; d ∈ D: s · d = t ⇔ d = s ▵ t</p>
+</li>
+<li><p class="first">Apply cancellation</p>
+<p>∀ s ∈ S; d, e ∈ D: s · d = s · e ≠ ⊥ ⇒ d = e</p>
+<p>Note the converse is already true due to how = works.</p>
+</li>
+<li><p class="first">Diff inverse</p>
+<p>∀ s, t ∈ S: s ▵ t = -(t ▵ s)</p>
+</li>
+<li><p class="first">Diff cancellation</p>
+<p>∀ s ∈ S; d ∈ D: s · d ≠ ⊥ ⇒ s · d · -d = s</p>
+<p>Note the converse is already true due to the definition of ·.</p>
+</li>
+<li><p class="first">Weak commutativity (optional)</p>
+<p>∀ o, a, b ∈ S: o · (o ▵ a) · (o ▵ b) = o · (o ▵ b) · (o ▵ a)</p>
+</li>
+</ol>
+<p>Lemmas: (TODO)</p>
+<ol class="arabic">
+<li><p class="first">Zero apply (by A2, A1)</p>
+<p>∀ s ∈ S: s · 0 = s</p>
+</li>
+<li><p class="first">Diff collapse (by A2, A3)</p>
+<p>∀ s ∈ S; d ∈ D: s ▵ (s · d) = d</p>
+</li>
+<li><p class="first">Apply collapse (by A2, A3)</p>
+<p>∀ s, t ∈ S: s · (s ▵ t) = t</p>
+</li>
+</ol>
+<p>Theorems:</p>
+<p>Let 3-way-merge(o, a, b) = b · (o ▵ a)</p>
+<ol class="arabic">
+<li><p class="first">First argument defines the identity element.</p>
+<div class="line-block">
+<div class="line">3-way-merge(o, a, o) = a (by L3)</div>
+<div class="line">3-way-merge(o, o, a) = a (by A1, L1)</div>
+</div>
+</li>
+<li><p class="first">If A6, then 3-way-merge is commutative under fixed o (by L3, A6)</p>
+<p>∀ o, a, b ∈ S: b · (o ▵ a) = a · (o ▵ b)</p>
+</li>
+</ol>
+</div>
 </div>
 <div class="section" id="greeting-protocols">
 <h2>Greeting protocols<a class="headerlink" href="#greeting-protocols" title="Permalink to this headline">¶</a></h2>
@@ -73,7 +142,10 @@
   <h3><a href="../index.html">Table Of Contents</a></h3>
   <ul>
 <li><a class="reference internal" href="#">Proofs</a><ul>
-<li><a class="reference internal" href="#causal-ordering">Causal ordering</a></li>
+<li><a class="reference internal" href="#causal-ordering">Causal ordering</a><ul>
+<li><a class="reference internal" href="#formal-model-for-diff-and-apply">Formal model for diff and apply</a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#greeting-protocols">Greeting protocols</a></li>
 <li><a class="reference internal" href="#key-rotation-ratchets">Key-rotation ratchets</a></li>
 </ul>
@@ -128,7 +200,7 @@
     </div>
     <div class="footer" role="contentinfo">
         &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.6.
     </div>
   </body>
 </html>

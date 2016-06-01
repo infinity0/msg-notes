@@ -35,8 +35,8 @@ Some suggestions include:
 
 - highlight (gray out) a message's (non-)ancestors on hover / long-press
 
-Messages sent during a member change
-------------------------------------
+Messages sent before a member change completes, but received afterwards
+-----------------------------------------------------------------------
 
 TODO(xl): generalise so these aren't specific to GKAs
 
@@ -76,6 +76,9 @@ Some suggestions include:
 
 - Disabling the send button whilst the exclusion operation is in progress.
   This degrades the user experience, and should be avoided.
+
+- Show an explicit persistent notice that an operation is ongoing. When the
+  operation finishes, state how it finished. TODO: rw with below
 
 - Have explicit notices that a member was included / excluded - in addition to
   the user list, which is typically not in the primary area of the screen. When

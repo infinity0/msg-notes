@@ -284,9 +284,9 @@ but the operation fails, and is followed by a proposal to exclude <em>c</em> whi
 accepted and succeeds immediately without requiring more packets; further
 proposals to fail &#8220;-c&#8221; are rejected, and then a second proposal to include <em>b</em>
 is accepted after the first one was rejected earlier.</p>
-<p>Our agreement algorithm, ignoring a few special cases mentioned later, is as
-follows: for a given parent pF/pI, we accept the first pI/pF proposal in the
-channel event sequence that references it, except that:</p>
+<p>Our agreement algorithm, ignoring a few special cases mentioned later (rule EIO
+and EII), is as follows: for a given parent pF/pI, we accept the first pI/pF
+proposal in the channel event sequence that references it, except that:</p>
 <dl class="docutils">
 <dt>Rule XP:</dt>
 <dd>We ignore proposals that are added to the channel when the channel membership
@@ -342,6 +342,8 @@ explicit references, not the group channel ordering relation.</td></tr>
 <dt>CH(pId):</dt>
 <dd>H(CH(pId of previous accepted proposal) || pId || pId-type)</dd>
 </dl>
+<p>The encoding should be unambiguous; the actual implementation may add extra
+padding characters beyond simple concatenation, if this is required.</p>
 <p>We include the (unauthenticated) channel sender and recipients in the hash for
 the packet-id, so that our consistency checks also cover this information. This
 is necessary, because our agreement algorithm uses that information. If we omit
@@ -364,14 +366,22 @@ every pI should also contain:</p>
 <dt>prev_CH:</dt>
 <dd>chain hash of prev_pF = CH(prev_pF)</dd>
 </dl>
-<p>When an incoming member accepts their first pF, they may read the previous CH
-from this value, trusting it opportunistically until the next consistency
-check. When starting a new session from scratch (so that there is no prev_pF),
-we may use the random prev_pF as mentioned in <a class="reference internal" href="#hybrid-context-preserve"><span>Context preservation</span></a>;
-this should not actually need any specific code to &#8220;just work&#8221;.</p>
-<p>Periodically, everyone authenticates and sends the following information:</p>
+<p>When an incoming member accepts their first pI, they may read the previous CH
+from this record, trusting it opportunistically until the next consistency
+check (described below). When starting a new session from scratch with a random
+prev_pF (as defined in <a class="reference internal" href="#hybrid-context-preserve"><span>Context preservation</span></a>), we can use any value
+here; in practise we arbitrarily use prev_CH = H(&#8220;&#8221; || prev_pF || 0xFF).</p>
+<p>Chain hashes would be unnecessary if we can be sure that every accepted packet
+is cryptographically bound to the previous accepted packet i.e. an attacker
+cannot trick anyone into interpreting it as referencing a different one. Most G
+do bind packet <em>contents</em> thus, but we must also hash in information about the
+<em>channel members</em> which is typically ignored. So chain hashes <em>are</em> necessary
+here. Another benefit is that we avoid relying on properties of G.</p>
+<p>When operation finishes, everyone in the resulting session (i.e. the previous
+members for a successful finish, or the next members for a failed finish)
+authenticates and sends the following information:</p>
 <blockquote>
-<div>( last pId seen, CH(pId) )</div></blockquote>
+<div>( last accepted pId, CH(pId) )</div></blockquote>
 <p>This could be done as part of a message in our (authenticated) causal order
 history graph. This essentially corresponds to an &#8220;ack&#8221; that we described
 previously, but for the total order of accepted proposals. Then, we may ensure
@@ -381,13 +391,13 @@ similar to as described in <a class="reference internal" href="../causal/02-cons
 identically across all members? Well, firstly, we don&#8217;t assume that G does this
 by <em>all members</em>, only by some party that is satisfactory. Secondly, <em>even if</em>
 G does authenticate the result (of a particular pF) by all members, whether it
-is actually accepted by each member, is outside of its control. For example,
-two members may be able to send two different pF proposals, that can each cause
-G to reach different but valid results. With the help of the transport, this
-could be arranged, causing the session to split outside of G&#8217;s control. We
-could specify that G should prevent this, but the property is quite hard to
-define formally. <a class="footnote-reference" href="#ngcon" id="id7">[7]</a> So instead we specify this consistency check, that
-works regardless of the guarantees that G makes.</p>
+is actually accepted by each member is outside of its control. For example, two
+members may be able to send two different pF proposals, that can each cause G
+to reach different but valid results. The transport could arrange itself so
+that some members receive one proposal and some the other, causing the session
+to split outside of G&#8217;s control. We could specify that G should prevent this,
+but this is generally not a cryptographic problem. <a class="footnote-reference" href="#ngcon" id="id7">[7]</a> Instead, we do
+this consistency check that works regardless of the guarantees that G makes.</p>
 <table class="docutils footnote" frame="void" id="nhash" rules="none">
 <colgroup><col class="label" /><col /></colgroup>
 <tbody valign="top">
@@ -520,10 +530,10 @@ would kick us because we&#8217;re in the channel at an inappropriate time.</li>
 <dd>If another member enters outside of a membership operation, notify the local
 user that they would like to join the session.</dd>
 <dt>Rule EO:</dt>
-<dd>If another member enters during a membership operation, then (by rule XP)
-they are not part of the pending new sub-session, so kick them. Optionally,
-notify the local user that they probably want to join the channel, so that
-they can manually invite them.</dd>
+<dd>If another member enters during a membership operation, then (assuming we&#8217;ve
+already applied rule XP) they are not part of the pending new sub-session, so
+kick them. Optionally, notify the local user that they probably want to join
+the channel, so that they can manually invite them.</dd>
 </dl>
 </div>
 <div class="section" id="leaving-a-channel">
@@ -594,10 +604,11 @@ expects to be included into a new session.</li>
 </div>
 <div class="section" id="excluded-from-a-session">
 <h3>Excluded from a session<a class="headerlink" href="#excluded-from-a-session" title="Permalink to this headline">¶</a></h3>
-<p>When we exclude someone, as per previous sections, they stay in the channel
-until they are kicked, since they can&#8217;t identify a success pF. This means that
-they have state inconsistent with other members, so we can&#8217;t re-include them,
-until they&#8217;ve left the channel and reset their state. In other words:</p>
+<p>When we exclude someone, as prescribed previously, they stay in the channel
+until they are kicked, since (in the general case, we must assume) they can&#8217;t
+identify a success pF. Then, their state is inconsistent with other members, so
+we can&#8217;t re-include them, until they&#8217;ve left the channel and reset it. In terms
+of a rule:</p>
 <dl class="docutils">
 <dt>Rule IAL:</dt>
 <dd>When someone tries to include a member into the session, who was previously
@@ -687,7 +698,7 @@ case this happens, ideally after consistency is reached or itself times out.</p>
     </div>
     <div class="footer" role="contentinfo">
         &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.6.
     </div>
   </body>
 </html>

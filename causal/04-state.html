@@ -6,7 +6,7 @@
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     
-    <title>Pseudo-mutable state &mdash; msg-notes 0.0.0 documentation</title>
+    <title>History and state &mdash; msg-notes 0.0.0 documentation</title>
     
     <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
     <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
@@ -51,31 +51,102 @@
         <div class="bodywrapper">
           <div class="body" role="main">
             
-  <div class="section" id="pseudo-mutable-state">
-<h1>Pseudo-mutable state<a class="headerlink" href="#pseudo-mutable-state" title="Permalink to this headline">¶</a></h1>
-<div class="section" id="union-of-events-vs-pseudo-mutable-shared-state">
-<h2>Union of events vs pseudo-mutable shared state<a class="headerlink" href="#union-of-events-vs-pseudo-mutable-shared-state" title="Permalink to this headline">¶</a></h2>
-</div>
-<div class="section" id="global-state">
-<h2>Global state<a class="headerlink" href="#global-state" title="Permalink to this headline">¶</a></h2>
+  <div class="section" id="history-and-state">
+<h1>History and state<a class="headerlink" href="#history-and-state" title="Permalink to this headline">¶</a></h1>
+<p>Now back to session semantics. If you&#8217;re coming into this directly from an
+external resource, make sure you&#8217;ve read the first parts of <a class="reference internal" href="01-ordering.html"><em>Ordering</em></a>.</p>
+<p>Regarding membership, so far in our data model we&#8217;ve only defined that each
+message is associated with a set of members. Now, suppose we reach a fork in
+our session history G, i.e. |max(G)| &gt; 1, and the messages in this set all
+have different members. What then, is the membership of our current session G?</p>
+<p>It&#8217;s good to be lazy in computer science, so we first start with a rain check -
+&#8220;do we really need to answer this&#8221;? Unfortunately yes, and the result <em>must</em> be
+a single membership set, and not (e.g.) a set of &#8220;possible membership sets&#8221;: if
+the user wanted to send a new message <em>right now</em> before the fork is resolved,
+we must send it to <em>some specific</em> set of members, and we must indicate this
+somewhere in the UI so they <em>know</em> who they are sending it to.</p>
+<div class="section" id="union-of-events-vs-dynamic-state">
+<h2>Union of events vs dynamic state<a class="headerlink" href="#union-of-events-vs-dynamic-state" title="Permalink to this headline">¶</a></h2>
+<p>To recap: we want to develop a dynamic group session protocol, where &#8220;dynamic&#8221;
+means &#8220;members may change at any time&#8221;. Our security constraints around context
+and ordering led us to represent the session history as an immutable graph of
+messages, whose edges represent a transitively-reduced ≤ relationship.</p>
+<p>We make the high-level observation that, in models based on an immutable
+history of events, each event may be associated with two types of data: with
+type 1 the &lt;data&gt; of the whole is just the union of the &lt;data&gt; of every event;
+with type 2 the &lt;data&gt; of the whole is an &#8220;aggregated form&#8221; of the &lt;data&gt; of
+every event, and the former &#8220;changes&#8221; as we accept more events into the local
+history. Applying this to group sessions and version control, we have:</p>
+<table border="1" class="docutils">
+<colgroup>
+<col width="28%" />
+<col width="28%" />
+<col width="45%" />
+</colgroup>
+<thead valign="bottom">
+<tr class="row-odd"><th class="head">Model</th>
+<th class="head">Type 1 &#8220;union&#8221;</th>
+<th class="head">Type 2 &#8220;dynamic&#8221;</th>
+</tr>
+</thead>
+<tbody valign="top">
+<tr class="row-even"><td>Group session</td>
+<td>Message content</td>
+<td>Session / message membership</td>
+</tr>
+<tr class="row-odd"><td>Version control</td>
+<td>Commit message</td>
+<td>Commit tree content</td>
+</tr>
+</tbody>
+</table>
+<p>In some sense, the messages (union of events) is the &#8220;main focus&#8221; of our
+system, but membership (dynamic state) is also quite important - and where the
+hard problems lie. Luckily, in DVCSs it&#8217;s the commit tree content (dynamic
+state) that is the &#8220;main focus&#8221; of those systems, and we can use solutions from
+there to inspire solutions for the analogous problems in ours.</p>
+<p>It&#8217;s not immediately obvious that there is an &#8220;aggregated form&#8221; of the tree
+content of multiple commits. But in fact, that is what a merge algorithm does:
+assuming there are no conflicts, it gives us a single output tree state, for
+any input set of forked branch heads.</p>
+<p>For group sessions, we don&#8217;t want to force users to &#8220;add a merge commit&#8221; (i.e.
+write a new message) every time there is a fork. What we <em>can</em> do now however,
+is to define &#8220;the&#8221; state of a forked history G, in line with our analogies:</p>
+<dl class="docutils">
+<dt><strong>members(G)</strong> = merge[G](max(G))</dt>
+<dd>Current session membership at G, i.e. after having received/accepted all
+messages in G, and no other messages.</dd>
+</dl>
+<p>Now, we need an algorithm merge[G](X) to merge the state of a set of nodes,
+like the ones that exist in modern DVCSs. Furthermore, the algorithm must never
+require manual conflict resolution - we must have a result <em>before</em> the user
+writes any message.</p>
+<p>From here on, we&#8217;ll ignore the <cite>type 1</cite> column and message content. When we
+refer to the &#8220;state&#8221; of a node, we mean the <cite>type 2</cite> state, and when we refer
+to &#8220;merged state&#8221;, we mean the aggregated state. In our group session system,
+<cite>state</cite> represents a set of members, but for now to keep things simple, we&#8217;ll
+ignore this and mostly talk about an opaque semantics-free <cite>state</cite>. To re-state
+our aim in these terms, we want to define a function:</p>
+<dl class="docutils">
+<dt><strong>merge[G](X)</strong> &#8211; where:</dt>
+<dd><ul class="first last simple">
+<li>G is a <a class="reference internal" href="01-ordering.html"><em>partial order</em></a> history graph, where each node
+is associated with some type-2 state (e.g. &#8220;set of members&#8221;)</li>
+<li>X is a set of nodes ∈ G</li>
+<li>the output is a state</li>
+</ul>
+</dd>
+</dl>
 </div>
 <div class="section" id="way-merge">
-<h2>3-way merge<a class="headerlink" href="#way-merge" title="Permalink to this headline">¶</a></h2>
-<div class="section" id="possible-state-types">
-<h3>Possible state types<a class="headerlink" href="#possible-state-types" title="Permalink to this headline">¶</a></h3>
-</div>
-</div>
-<div class="section" id="general-merge-algorithm-for-dags">
-<span id="merge-algorithm"></span><h2>General merge algorithm for DAGs<a class="headerlink" href="#general-merge-algorithm-for-dags" title="Permalink to this headline">¶</a></h2>
-<div class="section" id="commutativity-and-associativity">
-<h3>Commutativity and associativity<a class="headerlink" href="#commutativity-and-associativity" title="Permalink to this headline">¶</a></h3>
-</div>
-<div class="section" id="history-matters">
-<h3>History matters<a class="headerlink" href="#history-matters" title="Permalink to this headline">¶</a></h3>
-<p>Merging the same set of states {{ab}, {bc}} in both cases, but with different history:</p>
+<h2>3-way-merge<a class="headerlink" href="#way-merge" title="Permalink to this headline">¶</a></h2>
+<p>To begin with, note that it&#8217;s impossible to do correct merges without knowing
+previous relevant history. <a class="footnote-reference" href="#mhst" id="id1">[1]</a> To demonstrate this, see the below cases.
+In both cases, we want to merge the same states - unordered sets {a, b} and
+{b, c}, but the two cases have different histories:</p>
 <p class="graphviz">
-<img src="../_images/graphviz-60c2717d7d1d6aa57f0354351a0057912d873d12.png" alt="digraph merge_history {
-rankdir=BT;
+<img src="../_images/graphviz-ad12e398e83b63ee9f0bb1e5c0cdb5c3033bc8c0.png" alt="digraph merge_history {
+rankdir=RL;
 node [style=&quot;filled&quot;];
 
 x1 [fillcolor=&quot;#66ff66&quot;,label=&quot;b&quot;];
@@ -97,7 +168,498 @@ x0 -&gt; l0 [color=&quot;#666666&quot;];
 x0 -&gt; r0 [color=&quot;#666666&quot;];
 }" />
 </p>
-<p>Node labels indicate the state (an unordered set) at the node. Blue nodes are the input (nodes to be merged), green is the output (merged state), gray arrows indicate merge-parents (i.e. nodes with &gt;1 parent).</p>
+<p>The node label &#8220;bc&#8221; means the state at that node is {b, c}, and so on. Edges
+are labeled with the operation that the child node performs on the state at the
+parent node. Blue nodes are the nodes to be merged, green is the output (a
+candidate node with merged state), and gray edges indicate merge parents (i.e.
+nodes with &gt;1 parent).</p>
+<p>So as a minimum requirement, our merge algorithm must use <em>some</em> information
+from the previous history. The most basic version of this is a 3-way merge:</p>
+<dl class="docutils">
+<dt>3-way-merge(o, a, b) &#8211; where</dt>
+<dd><ul class="first last simple">
+<li>o, a, b are states</li>
+<li>o is interpreted as some form of both a&#8217;s past and b&#8217;s past</li>
+<li>the output is a state, or ⊥ if there is a merge conflict</li>
+</ul>
+</dd>
+</dl>
+<p>Based on intuition, we suggest that this should satisfy some invariants. First,
+if nothing changed on one branch, then it should simply use the other one, i.e.
+∀ o, a: 3-way-merge(o, o, a) = 3-way-merge(o, a, o) = a. Next, in a
+forked history neither side is favoured - so the order of the last arguments
+should not change the result, i.e. ∀ o, a, b: 3-way-merge(o, a, b) =
+3-way-merge(o, b, a). We&#8217;ll come back to these later.</p>
+<p>To get an intuitive feel on how it should work, we can define 3-way-merge in
+terms of more familiar <cite>diff</cite> and <cite>apply</cite> operations:</p>
+<p>3-way-merge(o, a, b) = apply(b, diff(o, a)) = apply(a, diff(o, b))</p>
+<p>This is easier to understand, but specifying invariants equivalent to the ones
+above is more complex; see <a class="reference internal" href="../appendix/02-proofs.html#diff-apply-model"><span>the appendix</span></a> for details.
+In a real implementation it suffices to define only 3-way-merge, and it&#8217;s also
+slightly more efficient.</p>
+<p>From our apply-diff definition, we see a potential source of conflicts. We
+apply a diff (o, a) on top of a context (b) that it was not intended for. How
+likely this is to happen, depends on the state data type. For example, this can
+quite easily happen with lists-of-lines (as DVCSs use), and happens less often
+with semantic diff/merge algorithms.</p>
+<p>Let&#8217;s start with the simplest option to represent group session membership, an
+unordered set, and try to define 3-way-merge for this data type.</p>
+<div class="line-block">
+<div class="line">Set-3-way-merge(o, a, b)</div>
+<div class="line">= Set-apply(b, Set-diff(o, a))</div>
+<div class="line">= Set-apply(b, [insert (a \ o), delete (o \ a)])</div>
+<div class="line">= b ∪ (a \ o) \ (o \ a)</div>
+<div class="line">= a ∪ b \ o ∪ (a ∩ b ∩ o) &#8211; equivalent to the previous;
+more &#8220;obviously&#8221; symmetric but probably slightly less efficient</div>
+</div>
+<p>It&#8217;s fairly straightforward to check that this satisfies our invariants above.
+To check symmetry with respect to {a, b}, it helps to draw a Venn diagram.</p>
+<p>We&#8217;re in luck - this is well-defined for all arguments, and no conflicts can
+result from this algorithm. So let&#8217;s use this for now as our state data type,
+and continue with the rest of the merge algorithm.</p>
+<table class="docutils footnote" frame="void" id="mhst" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id1">[1]</a></td><td><p class="first">If the <cite>state</cite> data type does not allow <cite>undo</cite> operations, then we
+can get by without knowing history. This is exactly how state-based CRDTs
+work, see <a class="reference internal" href="#comparison-vs-crdts"><span>below</span></a>. In that literature, &#8220;no undo&#8221;
+is stated instead as &#8220;states must increase along some partial order&#8221;. This
+is unrelated to our partial order on G, also explained below.</p>
+<p>Our system already has history however, so we wanted to start by exploring
+the minimal amount of additional complexity, i.e. to use a simple unordered
+set as our <cite>state</cite> data type for membership sets. This <em>does</em> allow <cite>undo</cite>,
+such as adding then removing a member. Similarly, DVCSs that use line-based
+diff algorithms also allow <cite>undo</cite> - you can remove one line from a file,
+commit it, then re-add it in a later commit. Neither unordered sets nor
+line-lists are suitable as a state-based CRDT.</p>
+<p class="last">If these paragraphs confused you, just ignore them and ignore state-based
+CRDTs; it&#8217;s not essential for understanding the rest of this document.</p>
+</td></tr>
+</tbody>
+</table>
+</div>
+<div class="section" id="general-merge">
+<h2>General merge<a class="headerlink" href="#general-merge" title="Permalink to this headline">¶</a></h2>
+<p>What about more complex histories? It turns out, we can build a merge algorithm
+that works on arbitrary histories, using only 3-way-merge (which doesn&#8217;t query
+the history) and queries on the history. There are several advantages to this:</p>
+<p>It is completely independent of the <em>state type</em> - i.e. merge does not need to
+manipulate state directly, it simply uses 3-way-merge (which does do that). So
+if we change our state type, we only need to provide a new 3-way-merge, and not
+a completely new merge algorithm.</p>
+<p>Another advantage is that, since it doesn&#8217;t touch the state directly, it also
+does not generate merge conflicts beyond what 3-way-merge generates. We saw
+earlier that our 3-way-merge for unordered sets never results in conflicts, so
+things are looking pretty good for our original requirements.</p>
+<p>We didn&#8217;t invent this algorithm ourselves: git did the hard work, via years of
+mailing list discussions and engineering experience. However, it&#8217;s unclear if
+they know this is a <em>correct</em> solution or just an heuristic: even now, <code class="docutils literal"><span class="pre">man</span>
+<span class="pre">git-merge</span></code> says &#8220;[the default merge algorithm] has been reported to result in
+fewer merge conflicts without causing mismerges by tests done on actual merge
+commits taken from Linux 2.6 kernel development history.&#8221;</p>
+<p>Our novel contribution here then, is a proof sketch that this merge algorithm
+is indeed <em>correct</em> and <em>unique</em>, derived from some fairly simple proposals on
+how &#8220;reasonable&#8221; merge algorithms should behave. We&#8217;ll get to that later; first
+we go through a more &#8220;blind&#8221; derivation, that&#8217;s hopefully more intuitive if you
+haven&#8217;t seen how this works before.</p>
+<p>To restate our problem, we want to define:</p>
+<div class="highlight-python"><div class="highlight"><pre>merge(G: graph, X: {node}) -&gt; state
+</pre></div>
+</div>
+<p>and we assume there is some 3-way-merge for our state data type:</p>
+<div class="highlight-python"><div class="highlight"><pre>3-way-merge(o: state, a: state, b: state) -&gt; state
+</pre></div>
+</div>
+<p>Notation wise: <code class="docutils literal"><span class="pre">f(x:</span> <span class="pre">T0)</span> <span class="pre">-&gt;</span> <span class="pre">T1</span></code> means that input argument <code class="docutils literal"><span class="pre">x</span></code> has type
+<code class="docutils literal"><span class="pre">T0</span></code> and <code class="docutils literal"><span class="pre">f</span></code> returns a value of type <code class="docutils literal"><span class="pre">T1</span></code>; <code class="docutils literal"><span class="pre">{T}</span></code> is the type of an
+immutable, unordered set whose inner values are of type <code class="docutils literal"><span class="pre">T</span></code>.</p>
+<p>To simplify our pending explanation, we&#8217;ll assume some things for now, then
+un-assume and handle them after we&#8217;ve explained the core of the algorithm.</p>
+<ol class="arabic simple">
+<li>X is an anti-chain, i.e. no two nodes in it are ≤ each other. Later
+we&#8217;ll describe how to detect and handle this case.</li>
+<li>X is a list. Later we&#8217;ll show that the merge result is the same regardless
+of the order of elements. (Duplicate elements are handled by (1)).</li>
+</ol>
+<div class="section" id="simple-intuitive-derivation">
+<h3>Simple intuitive derivation<a class="headerlink" href="#simple-intuitive-derivation" title="Permalink to this headline">¶</a></h3>
+<p>Let&#8217;s try a recursive definition. As with all recursive derivations, first
+let&#8217;s pretend we already have what we want to define:</p>
+<div class="highlight-python"><div class="highlight"><pre>merge(G, X: [node]) -&gt; state # omitting &quot;G: graph&quot; to reduce clutter
+</pre></div>
+</div>
+<p>To make our lives easier, let&#8217;s derive a simpler form first:</p>
+<div class="highlight-python"><div class="highlight"><pre>def lca2(G, a: node, b: node) -&gt; [node]:
+  # lowest common ancestors of 2 nodes
+  return max({ v in G | v &lt;= a and v &lt;= b })
+
+def merge2(G, a: node, b: node) -&gt; state:
+  O = lca2(G, a, b) # calculate parent node(s), for 3-way-merge
+  if size(O) == 1: # base case
+    os = O[0].state
+  if size(O) &gt;= 2: # recurse!
+    os = merge(G, O)
+  return 3-way-merge(os, a.state, b.state)
+</pre></div>
+</div>
+<p>There, that wasn&#8217;t so hard. But now how do we turn <code class="docutils literal"><span class="pre">merge2</span></code> into <code class="docutils literal"><span class="pre">merge</span></code>?
+As in many other areas of computer science, if we have a binary operation, we
+can use <a class="reference external" href="https://en.wikipedia.org/wiki/Fold_%28higher-order_function%29">fold</a> (sometimes called <cite>reduce</cite>) to apply it to a non-empty list. We
+have to do some minor fiddling as well:</p>
+<div class="highlight-python"><div class="highlight"><pre># attempt at defining &quot;merge&quot;
+def merge-fold-recurse(G, X: [node]) -&gt; state:
+  def merge2&#39;(a: node, b: node) -&gt; node:
+    s = merge2(G, a, b)
+    return &quot;new temp node&quot; in G with state = s, parents = {a, b}
+  return fold(merge2&#39;, X).state
+</pre></div>
+</div>
+<p>&#8220;new temp node&#8221; means to create a temporary node in G just for the duration of
+<code class="docutils literal"><span class="pre">fold</span></code>, so that it has something to work with. We&#8217;ll get rid of this soon
+below (in a real implementation G should be immutable anyway) but for now this
+gives a good intuition on how the algorithm works.</p>
+<p>But wait, there&#8217;s another way of applying the <code class="docutils literal"><span class="pre">fold</span></code>. Instead of applying it
+to <code class="docutils literal"><span class="pre">merge2</span></code>, we apply it <em>inside</em> <code class="docutils literal"><span class="pre">merge2</span></code>, to <code class="docutils literal"><span class="pre">3-way-merge</span></code> which is
+also a binary operation (if we fix the <code class="docutils literal"><span class="pre">o</span></code> argument):</p>
+<div class="highlight-python"><div class="highlight"><pre>def lca(G, X: [node]) -&gt; [node]:
+  # lowest common ancestors of n nodes
+  return max({ v in G | v &lt;= x for all x in X })
+
+def merge-recurse-fold(G, X: [node]) -&gt; state:
+  O = lca(G, X) # calculate the parent node / nodes
+  if size(O) == 1: # base case
+    os = O[0].state
+  if size(O) &gt;= 2: # recurse!
+    os = merge-recurse-fold(G, O)
+  def 3-way-merge-with-o(a: node, b: node) -&gt; node:
+    s = 3-way-merge(os, a.state, b.state)
+    return &quot;new temp node&quot; in G with state = s, parents = {a, b}
+  return fold(3-way-merge-with-o, X).state
+</pre></div>
+</div>
+<p>(If you&#8217;re confused by this, try to compare this with <code class="docutils literal"><span class="pre">merge2</span></code>. The &#8220;general
+idea&#8221; is the same; we just turned binary operations on (a, b) into their n-ary
+counterparts.)</p>
+<p>So which version is correct? Or perhaps they are identical, and both correct?</p>
+</div>
+<div class="section" id="a-more-precise-derivation">
+<h3>A more precise derivation<a class="headerlink" href="#a-more-precise-derivation" title="Permalink to this headline">¶</a></h3>
+<p>It turns out, <code class="docutils literal"><span class="pre">fold-recurse</span></code> is correct (and what git recursive-merge does),
+and <code class="docutils literal"><span class="pre">recurse-fold</span></code> is wrong. To explain why, we&#8217;ll justify our steps more
+with a semi-formal argument. Hopefully it&#8217;s precise enough to be turned into a
+more rigorous proof later, if one wanted to do that.</p>
+<p>First, let&#8217;s define an <cite>operational edge</cite>. This is an edge from a node to its
+parent, where the author of the node intended to introduce some state change,
+the &#8220;operation&#8221;. So for example: (a) for a node with a single edge whose state
+differs from its parent&#8217;s, that edge is an <cite>operational edge</cite>; (b) for a node
+with many parents where the author only performed the merge algorithm and did
+nothing else, none of these edges are <cite>operational edges</cite>; (c) for a node v
+with many parents where the author also performed extra operations <em>on top of</em>
+the merge algorithm, we may instead treat this as virtual nodes (v₀ ←
+v₁) where v₀ points to the actual parents of v as in case (b) and the edge from
+v₁ to v₀ is the operational edge as in case (a). (These cases are not used
+in the below proof-sketch, but do become useful in an actual rigorous proof.)</p>
+<p>Our other definitions:</p>
+<ul class="simple">
+<li>\ is a binary infix operator denoting set subtraction.</li>
+<li>⊔ is a binary infix operator denoting set <em>disjoint</em> union. That
+is, A ⊔ B is equal to A ∪ B but with the extra assertion that
+A ∩ B = ∅.</li>
+<li>anc*(V) = ⋃ {anc(v) ∀ v ∈ V}, the union of ancestors of all
+nodes in set V.</li>
+</ul>
+<p>Our assumptions, which we think are reasonable starting points, but perhaps not
+fully rigourous or &#8220;maximally simple&#8221;, are:</p>
+<ol class="arabic simple">
+<li>Given node a, its state <code class="docutils literal"><span class="pre">a.state</span></code> &#8220;applies exactly once&#8221; all operational
+edges in anc(a). We&#8217;ll abbreviate this as <code class="docutils literal"><span class="pre">a.state</span></code> ≅ anc(a).</li>
+<li>If a ≤ b, then diff(<code class="docutils literal"><span class="pre">a.state</span></code>, <code class="docutils literal"><span class="pre">b.state</span></code>) ≅ anc(b) \ anc(a).<ol class="loweralpha">
+<li>More generally, for all subgraphs A, B and states s, t: if A ⊆ B
+and s ≅ A and t ≅ B, then diff(s, t) ≅ B \ A.</li>
+<li>Similarly, for all subgraphs A, D and states s, diffs d: if A and D are
+disjoint and s ≅ A and d ≅ D, then apply(s, d) ≅ A
+⊔ D.</li>
+</ol>
+</li>
+<li>For <code class="docutils literal"><span class="pre">merge(X)</span></code>, we want to find some t ≅ anc*(X).</li>
+</ol>
+<p>Now follows our proof-sketch. Let A = anc(a), B = anc(b). Sometimes we&#8217;ll also
+treat these node-sets as subgraphs (i.e. including the edges between them);
+hopefully it&#8217;s clear from the context. Now, our goal for <code class="docutils literal"><span class="pre">merge2(a,</span> <span class="pre">b)</span></code> is to
+to find t ≅ A ∪ B, and show that this is the case.</p>
+<p>First, by elementary set theory let&#8217;s note that A ∪ B
+= A ⊔ (B \ A)
+= B ⊔ (A \ B)
+= (A ∩ B) ⊔ (B \ A) ⊔ (A \ B)</p>
+<p>WLOG let&#8217;s try to find some s ≅ A \ B. Define o = lca2(a, b), O = anc*(o)
+= A ∩ B. (Note here that o is also a node-set.) Let p be some (yet unknown)
+state such that p ≅ O. By (1) we also have <code class="docutils literal"><span class="pre">a.state</span></code> ≅ A. Now O
+⊆ A so by (2.a) and the previous sentences, we have s = diff(p,
+<code class="docutils literal"><span class="pre">a.state</span></code>) ≅ A \ O = A \ B.</p>
+<p>How do we find p? Well, if o is a singleton set, then by (1) p = <code class="docutils literal"><span class="pre">o[0].state</span></code>
+satisfies what we need. If not, then by (3) <code class="docutils literal"><span class="pre">merge(o)</span></code> also satisfies what we
+need - and o ⊂ A, o ⊂ B, due to our &#8220;anti-chain&#8221; assumption, so
+this induction step  eventually reaches a base case, and is therefore a valid
+step. (Notice that this is exactly how we defined <code class="docutils literal"><span class="pre">merge2</span></code> earlier.)</p>
+<p>Now we can find t. By (1) we have <code class="docutils literal"><span class="pre">b.state</span></code> ≅ B, and we just found s
+≅ A \ B. So by (2.b) we have apply(<code class="docutils literal"><span class="pre">b.state</span></code>, s) ≅ B ⊔
+(A \ B) = A ∪ B. In other words, t = 3-way-merge(<code class="docutils literal"><span class="pre">p.state</span></code>, <code class="docutils literal"><span class="pre">a.state</span></code>,
+<code class="docutils literal"><span class="pre">b.state</span></code>) ≅ A ∪ B. ∎</p>
+<p>To extend this to three arguments, imagine that we redo the proof, but with (A
+∪ B) and C in place of A and B, and with <code class="docutils literal"><span class="pre">merge2(a,</span> <span class="pre">b)</span></code> (which we just
+proved) in place of <code class="docutils literal"><span class="pre">a.state</span></code>. We will find that we need some o such that O =
+anc*(o) = (A ∪ B) ∩ C. In our 2-arg proof, this was o = lca2(a, b). In
+our 3-arg proof, this must be instead be o = lcaU({a, b}, c), where:</p>
+<dl class="docutils">
+<dt>lcaU(A, b)</dt>
+<dd><div class="first last line-block">
+<div class="line">= max({ v ∈ G | v ∈ anc(b) ∧ v ∈ anc*(A)})</div>
+<div class="line">= max({ v ∈ G | v ≤ b ∧ v ≤ a for some a ∈ A })</div>
+</div>
+</dd>
+</dl>
+<p>Then, the rest of the proof follows exactly as for the 2-arg case. We can also
+see that the result is the same regardless of the order of arguments - in all
+cases, we are finding some t ≅ anc*({a, b, c}). We can deduce by further
+induction, that <code class="docutils literal"><span class="pre">fold-recurse</span></code> ≡ <code class="docutils literal"><span class="pre">merge</span></code> is correct, and symmetric
+with respect to the order of its arguments. ∎</p>
+<p>Similar lines of reasoning also tell us why <code class="docutils literal"><span class="pre">recurse-fold</span></code> is wrong, because
+when we execute <code class="docutils literal"><span class="pre">O</span> <span class="pre">=</span> <span class="pre">lca(X)</span></code>, this is analogous to finding O = A ∩ B
+∩ C (<code class="docutils literal"><span class="pre">O</span></code> ≠ O, but related), then trying to calculate t ≅ A ∪
+B ∪ C by finding diffs ≅ to each component of the expression O
+⊔ (A \ O) ⊔ (B \ O) ⊔ (C \ O) - but this
+is clearly not equal to A ∪ B ∪ C.</p>
+<p>As a concrete example, see:</p>
+<p class="graphviz">
+<img src="../_images/graphviz-e4560c281d3f14a80dd95a8818b3163f43e5d267.png" alt="digraph fold_recurse_vs_recurse_fold {
+rankdir=RL;
+node [style=&quot;filled&quot;];
+
+o [label=&quot;ab&quot;];
+a [label=&quot;a&quot;];
+u [fillcolor=&quot;#6666ff&quot;,label=&quot;abu&quot;];
+b [fillcolor=&quot;#6666ff&quot;,label=&quot;ab&quot;];
+v [fillcolor=&quot;#6666ff&quot;,label=&quot;av&quot;];
+m [fillcolor=&quot;#66ff66&quot;,label=&quot;&quot;];
+
+a -&gt; o [label=&quot;-b&quot;];
+u -&gt; o [label=&quot;+u&quot;];
+b -&gt; a [label=&quot;+b&quot;];
+v -&gt; a [label=&quot;+v&quot;];
+m -&gt; u [color=&quot;#666666&quot;];
+m -&gt; b [color=&quot;#666666&quot;];
+m -&gt; v [color=&quot;#666666&quot;];
+}" />
+</p>
+<p>For the green node trying to merge the blue nodes, <code class="docutils literal"><span class="pre">fold-recurse</span></code> gives the
+correct answer {abuv}, but <code class="docutils literal"><span class="pre">recurse-fold</span></code> gives {auv}.</p>
+</div>
+<div class="section" id="complete-algorithm">
+<span id="merge-algorithm"></span><h3>Complete algorithm<a class="headerlink" href="#complete-algorithm" title="Permalink to this headline">¶</a></h3>
+<p>Using lcaU from our above proof, we can get rid of our earlier &#8220;new temp node&#8221;
+shenanigans. Sadly, we can no longer use fold and must iterate manually:</p>
+<div class="highlight-python"><div class="highlight"><pre>def lcaU(G, A: {node}, b: node) -&gt; {node}:
+  assert A non-empty
+  # lowest common ancestors of a node-set and a node
+  return max({ v in G | v &lt;= b and v &lt;= a for some a in A })
+
+def mergeU(G, A: {node}, as: state, b: node) -&gt; state:
+  if A empty:
+    return b.state
+  O = lcaU(G, A, b) # calculate parent node(s), for 3-way-merge
+  CHECK( O &amp; (A | {b}) is empty ) # anti-chain check, see below
+  o = merge(G, O) # recurse up, to ancestors
+  return 3-way-merge(o, as, b.state)
+
+def merge_(G, B: {node}, A: {node}, as: state) -&gt; state:
+  if B empty:
+    return as
+  b = choose_any_element(B)
+  s = mergeU(A, as, b)
+  return merge_(G, B - {b}, A | {b}, s) # tail recurse sideways, to remaining args
+
+def merge(G, X: {node}) -&gt; state:
+  return merge_(G, X, {}, default-state)
+  # we could short-cut and check if X is empty or a singleton, but these
+  # cases are in fact already covered in the child functions
+</pre></div>
+</div>
+<p>Now we can check that each input set is an anti-chain. Consider lcaU(A, b) and
+suppose we know A is an anti-chain. Then, if a ≤ b for any a ∈ A, either
+a or b will be within the result of <code class="docutils literal"><span class="pre">lcaU</span></code>. Equivalently, if lcaU(A, b) ∩
+(A ∪ {b}) = ∅, then we know that b is causally independent of all
+a ∈ A. If we add this check to <code class="docutils literal"><span class="pre">mergeU</span></code>, then <code class="docutils literal"><span class="pre">merge_</span></code> will start with a
+base case A = ∅ which is an anti-chain, and as it processes elements
+from B and moves them into A, it will by induction check all pairs (x, x&#8217;) ∈
+X for causal independence.</p>
+<p>For our group session, we reject such inputs because they break our protocol
+invariants, and CHECK simply throws an exception to be handled further up the
+stack. <a class="footnote-reference" href="#tred" id="id2">[2]</a> During run-time, whenever we accept a message m, we must check
+that merge(pre(m)) does not throw an exception. This enforces the transitive
+reduction property, as promised in the first chapter.</p>
+<p>Note: certain extreme history graphs can cause our recursive definition for
+<code class="docutils literal"><span class="pre">merge</span></code> to stack overflow. It is possible to implement <code class="docutils literal"><span class="pre">merge</span></code> iteratively,
+but recursion from <code class="docutils literal"><span class="pre">mergeU</span></code> back to <code class="docutils literal"><span class="pre">merge</span></code> forces such an implementation
+to be very complex and hard to understand. A better solution is to simply add
+an LRU cache to <code class="docutils literal"><span class="pre">merge</span></code>. This is sufficient to prevent overflow, as long as
+we run the aforementioned merge(pre(m)) check for every incoming message.</p>
+<p>To summarise, if we fulfill the following requirements:</p>
+<ul>
+<li><p class="first">We have a partial order G on state-update events (nodes).</p>
+</li>
+<li><p class="first">We provide a ternary operator <cite>3-way-merge</cite> on states which obeys: <a class="footnote-reference" href="#idem" id="id3">[3]</a></p>
+<dl class="docutils">
+<dt>Identity under the fixed first argument</dt>
+<dd><p class="first last">∀ o, a: 3-way-merge(o, a, o) = 3-way-merge(o, o, a) = a</p>
+</dd>
+<dt>Commutative under a fixed first argument</dt>
+<dd><p class="first last">∀ o, a, b: 3-way-merge(o, a, b) = 3-way-merge(o, b, a)</p>
+</dd>
+</dl>
+<p>Alternatively, see <a class="reference internal" href="../appendix/02-proofs.html#diff-apply-model"><span>the appendix</span></a> for the equivalent
+model stated in terms of <cite>diff</cite> and <cite>apply</cite> operations.</p>
+</li>
+</ul>
+<p>Then we can define <cite>merge</cite> as <code class="docutils literal"><span class="pre">merge</span></code> from the pseudo-code above. Its
+properties are:</p>
+<ul class="simple">
+<li>commutative - the input is an unordered set.</li>
+<li>associative, in some sense. That is, the following two are equivalent, for
+all node-sets A, B:<ul>
+<li>merge(A ∪ B)</li>
+<li>merge({v} ∪ B) where v = new node { parents = A, state = merge(A) }</li>
+</ul>
+</li>
+<li>conflict-free (i.e. never returns ⊥) if 3-way-merge is conflict-free</li>
+</ul>
+<table class="docutils footnote" frame="void" id="tred" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id2">[2]</a></td><td>For other systems, such as DVCSs, this is not such a crucial error;
+they can instead ignore the extraneous older nodes, and run the algorithm
+as if the inputs were max(anc*(X)) - which is definitely an anti-chain.
+Tweaking our algorithm to do this efficiently is left as an exercise, but
+note that it is not enough to let CHECK continue or e.g. <code class="docutils literal"><span class="pre">return</span> <span class="pre">as</span></code>.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="idem" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id3">[3]</a></td><td><p class="first">There is another nice property for 3-way-merge to have, but it&#8217;s not
+strictly necessary:</p>
+<dl class="docutils">
+<dt><a class="reference external" href="https://en.wikipedia.org/wiki/Idempotence">Idempotent</a> under a fixed first argument</dt>
+<dd>∀ o, a: 3-way-merge(o, a, a) = a</dd>
+</dl>
+<p>If this holds, then <cite>merge</cite> is also idempotent (i.e. merge(X) = a, if
+∀ x ∈ X: <code class="docutils literal"><span class="pre">x.state</span></code> = a). We actually do have both of these &#8220;by
+accident&#8221; because 3-way-merge on unordered sets happens to be idempotent,
+but it&#8217;s not a <em>necessary</em> property. It has no effect on our derivation of
+the general merge algorithm, nor any other results here.</p>
+<p class="last">State-based CRDTs do mandate this because their systems can&#8217;t deduplicate
+identical events received more than once. We <em>can</em> do this though - and
+it&#8217;s a necessary aspect of protecting against replay attacks.</p>
+</td></tr>
+</tbody>
+</table>
+</div>
+</div>
+<div class="section" id="other-topics">
+<h2>Other topics<a class="headerlink" href="#other-topics" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="avoiding-merges">
+<h3>Avoiding merges<a class="headerlink" href="#avoiding-merges" title="Permalink to this headline">¶</a></h3>
+<p>Others have suggested instead to avoid the complexities with merge algorithms,
+and just <em>define</em> forked histories as completely different continuations of the
+session, never to be reconciled via a merge.</p>
+<p>However, this misunderstands the semantics of forks - and does not actually
+solve the original problem. Forks represent not a conscious user decision to
+&#8220;create a new thread of discussion&#8221;, but express an inherent property of our
+universe that two events may happen at the same time. Even if we supported
+user-conscious forks, we would <em>still</em> have to support these &#8220;accidental&#8221;
+forks: two users that <em>don&#8217;t want to consciously fork</em> (i.e. <em>want</em> the session
+to proceed as a <em>single branch</em>) could <em>still</em> create an accidental fork. This
+possibility also exists with DVCSs - for example, two users can end up with
+forked histories without ever having explicitly run <code class="docutils literal"><span class="pre">git</span> <span class="pre">branch</span></code>.</p>
+<p>If we avoid merges, we in effect assert that different scenarios (accidental vs
+conscious forks) are equivalent. This prevents the user from expressing their
+intentions accurately, and we consider this an unacceptable design choice.</p>
+</div>
+<div class="section" id="comparison-vs-crdts">
+<span id="id4"></span><h3>Comparison vs CRDTs<a class="headerlink" href="#comparison-vs-crdts" title="Permalink to this headline">¶</a></h3>
+<p>Our history-based merge has a similar purpose to CRDTs <a class="footnote-reference" href="#crdt" id="id5">[4]</a>, but these are
+designed with different assumptions, and have different requirements on what
+they need. To compare:</p>
+<ul>
+<li><p class="first">Systems that use CRDTs do not generally transmit history, and apply operation
+and state-update events (for op-based and state-based CRDTs, respectively)
+outside of their intended context - i.e. the knowledge of the event&#8217;s author,
+at the time that they generated that event. They are specifically designed
+around being able to ignore this context, i.e. to &#8220;move&#8221; these events around
+arbitrary places of recipients&#8217; histories.</p>
+<p>By contrast, history-merge specifically requires the opposite - that there is
+an immutable history that everyone has a strong eventual consistent view of,
+with each state-update being immutably associated with a particular event on
+this history. We do this for security (integrity) reasons, as do DVCSs.</p>
+</li>
+<li><p class="first">To achieve the <cite>conflict-free</cite> property (and to be able to correctly re-apply
+events under arbitrarily different contexts), CRDTs place extra requirements
+on what valid events and operations/states are. History-merge only requires
+there be a 3-way-merge over the states.</p>
+<p>To be clear: as far as I know, nobody has studied the differences between
+these requirements, but I strongly suspect that the 3-way-merge requirement
+is weaker (easier). For example, history-merge can support arbitrary set
+remove/re-add operations, but there is no CRDT that does this. <a class="footnote-reference" href="#cset" id="id6">[5]</a></p>
+</li>
+<li><p class="first">The term <cite>partial order</cite> is used in completely unrelated ways. To explain:</p>
+<ul>
+<li><p class="first">In a state-based CRDT, the term refers to a partial order on the <em>states</em>.
+It (the order itself) has no &#8220;real representation&#8221; in terms of a data
+structure, but rather is a mathematical concept inherent to the definition
+of that particular CRDT, chosen independently of (and constant with respect
+to) any run of a protocol that uses it. Conceptually and in general, there
+<em>could</em> exist other mathematical partial orders over the same states, that
+also satisfy the same laws as required by the CRDT.</p>
+</li>
+<li><p class="first">In the context of history-merge, the term refers to the partial order on
+the <em>events</em>. It (the order itself) is a data structure with real bits
+representing it, constructed during each run of the protocol. There can be
+no other partial order on the same events.</p>
+<p>It&#8217;s <em>possible</em> (we haven&#8217;t proved or checked it) that the laws we defined
+for 3-way-merge necessarily induce a partial order on the states. However,
+this is not directly relevant to any of our other discussions about our
+history-merge - and that is why we haven&#8217;t bothered to prove or check it.</p>
+</li>
+</ul>
+</li>
+<li><p class="first">With history-merge, state updates do not have to increase along the states&#8217;
+partial order, if one even exists.</p>
+</li>
+<li><p class="first">The history-based merge algorithm is indeed &#8220;idempotent, commutative and
+associative&#8221; in the same way that state-based CRDTs merge algorithms are. To
+be clear: as described, history-merge is a pure function over a given history
+graph and its associated states; whereas the <cite>merge</cite> of state-based CRDTs is
+typically described as an impure procedure that updates the local current
+state. But fundamentally, they are nearly the same concept, the difference
+being that the CRDT <cite>merge</cite> works without a history.</p>
+</li>
+</ul>
+<table class="docutils footnote" frame="void" id="crdt" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id5">[4]</a></td><td>See <a class="reference external" href="https://youtu.be/9xFfOhasiOE?t=24m">CRDTs Illustrated</a> for
+the definitions of both op-based and state-based CRDTs. The rest of the
+video is also a good introduction. See <a class="reference external" href="https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type">Wikipedia</a> for
+more detailed information.</td></tr>
+</tbody>
+</table>
+<table class="docutils footnote" frame="void" id="cset" rules="none">
+<colgroup><col class="label" /><col /></colgroup>
+<tbody valign="top">
+<tr><td class="label"><a class="fn-backref" href="#id6">[5]</a></td><td>That is, without tweaking the representation of the unordered set,
+which has other implications such as privacy loss or extra storage cost.
+TODO: link to Riak&#8217;s set implementation which uses &#8220;casual context&#8221;.</td></tr>
+</tbody>
+</table>
 </div>
 </div>
 </div>
@@ -110,16 +672,18 @@ x0 -&gt; r0 [color=&quot;#666666&quot;];
         <div class="sphinxsidebarwrapper">
   <h3><a href="../index.html">Table Of Contents</a></h3>
   <ul>
-<li><a class="reference internal" href="#">Pseudo-mutable state</a><ul>
-<li><a class="reference internal" href="#union-of-events-vs-pseudo-mutable-shared-state">Union of events vs pseudo-mutable shared state</a></li>
-<li><a class="reference internal" href="#global-state">Global state</a></li>
-<li><a class="reference internal" href="#way-merge">3-way merge</a><ul>
-<li><a class="reference internal" href="#possible-state-types">Possible state types</a></li>
+<li><a class="reference internal" href="#">History and state</a><ul>
+<li><a class="reference internal" href="#union-of-events-vs-dynamic-state">Union of events vs dynamic state</a></li>
+<li><a class="reference internal" href="#way-merge">3-way-merge</a></li>
+<li><a class="reference internal" href="#general-merge">General merge</a><ul>
+<li><a class="reference internal" href="#simple-intuitive-derivation">Simple intuitive derivation</a></li>
+<li><a class="reference internal" href="#a-more-precise-derivation">A more precise derivation</a></li>
+<li><a class="reference internal" href="#complete-algorithm">Complete algorithm</a></li>
 </ul>
 </li>
-<li><a class="reference internal" href="#general-merge-algorithm-for-dags">General merge algorithm for DAGs</a><ul>
-<li><a class="reference internal" href="#commutativity-and-associativity">Commutativity and associativity</a></li>
-<li><a class="reference internal" href="#history-matters">History matters</a></li>
+<li><a class="reference internal" href="#other-topics">Other topics</a><ul>
+<li><a class="reference internal" href="#avoiding-merges">Avoiding merges</a></li>
+<li><a class="reference internal" href="#comparison-vs-crdts">Comparison vs CRDTs</a></li>
 </ul>
 </li>
 </ul>
@@ -174,7 +738,7 @@ x0 -&gt; r0 [color=&quot;#666666&quot;];
     </div>
     <div class="footer" role="contentinfo">
         &copy; Copyright 2014-2015 Mega Limited, licensed under CC-BY-SA-4.0.
-      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.1.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.3.6.
     </div>
   </body>
 </html>
