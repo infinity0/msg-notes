@@ -239,7 +239,7 @@ Simple intuitive derivation
 Let's try a recursive definition. As with all recursive derivations, first
 let's pretend we already have what we want to define::
 
-    merge(G, X: [node]) -> state # omitting "G: graph" to reduce clutter
+    merge(G, X: [node]) -> state                # omitting "G: graph" to reduce clutter
 
 To make our lives easier, let's derive a simpler form first::
 
@@ -248,19 +248,18 @@ To make our lives easier, let's derive a simpler form first::
       return max({ v in G | v <= a and v <= b })
 
     def merge2(G, a: node, b: node) -> state:
-      O = lca2(G, a, b) # calculate parent node(s), for 3-way-merge
-      if size(O) == 1: # base case
-        os = O[0].state
-      if size(O) >= 2: # recurse!
-        os = merge(G, O)
-      return 3-way-merge(os, a.state, b.state)
+      O = lca2(G, a, b)                         # calculate parent node(s), for 3-way-merge
+      if size(O) == 1:                          # base case
+        s_o = O[0].state
+      if size(O) >= 2:                          # recurse!
+        s_o = merge(G, O)
+      return 3-way-merge(s_o, a.state, b.state)
 
 There, that wasn't so hard. But now how do we turn ``merge2`` into ``merge``?
 As in many other areas of computer science, if we have a binary operation, we
 can use `fold`_ (sometimes called `reduce`) to apply it to a non-empty list. We
 have to do some minor fiddling as well::
 
-    # attempt at defining "merge"
     def merge-fold-recurse(G, X: [node]) -> state:
       def merge2'(a: node, b: node) -> node:
         s = merge2(G, a, b)
@@ -283,13 +282,13 @@ also a binary operation (if we fix the ``o`` argument)::
       return max({ v in G | v <= x for all x in X })
 
     def merge-recurse-fold(G, X: [node]) -> state:
-      O = lca(G, X) # calculate the parent node / nodes
-      if size(O) == 1: # base case
-        os = O[0].state
-      if size(O) >= 2: # recurse!
-        os = merge-recurse-fold(G, O)
+      O = lca(G, X)                             # calculate the parent node / nodes
+      if size(O) == 1:                          # base case
+        s_o = O[0].state
+      if size(O) >= 2:                          # recurse!
+        s_o = merge-recurse-fold(G, O)
       def 3-way-merge-with-o(a: node, b: node) -> node:
-        s = 3-way-merge(os, a.state, b.state)
+        s = 3-way-merge(s_o, a.state, b.state)
         return "new temp node" in G with state = s, parents = {a, b}
       return fold(3-way-merge-with-o, X).state
 
@@ -426,32 +425,37 @@ Complete algorithm
 ------------------
 
 Using lcaU from our above proof, we can get rid of our earlier "new temp node"
-shenanigans. Sadly, we can no longer use fold and must iterate manually::
+shenanigans. Sadly, we can no longer use fold and must iterate manually:
 
-    def lcaU(G, A: {node}, b: node) -> {node}:
-      assert A non-empty
+.. code-block:: python
+
+    def lcaU(G, A: {node}, b: node) -> {node}:  # note 1
       # lowest common ancestors of a node-set and a node
-      return max({ v in G | v <= b and v <= a for some a in A })
+      return "max({ v in G | v <= b and v <= a for some a in A })"
 
-    def mergeU(G, A: {node}, as: state, b: node) -> state:
+    def mergeU(G, A: {node}, s_a: state, b: node) -> state:
       if A empty:
         return b.state
-      O = lcaU(G, A, b) # calculate parent node(s), for 3-way-merge
-      CHECK( O & (A | {b}) is empty ) # anti-chain check, see below
-      o = merge(G, O) # recurse up, to ancestors
-      return 3-way-merge(o, as, b.state)
+      O = lcaU(G, A, b)                         # calculate parent node(s), for 3-way-merge
+      CHECK( O & (A | {b}) is empty )           # anti-chain check, see below
+      s_o = merge(G, O)                         # recurse upwards, to ancestors
+      return 3-way-merge(s_o, s_a, b.state)     # note 2
 
-    def merge_(G, B: {node}, A: {node}, as: state) -> state:
+    def merge_(G, B: {node}, A: {node}, s_a: state) -> state:
       if B empty:
-        return as
+        return s_a
       b = choose_any_element(B)
-      s = mergeU(A, as, b)
-      return merge_(G, B - {b}, A | {b}, s) # tail recurse sideways, to remaining args
+      s = mergeU(G, A, s_a, b)
+      return merge_(G, B - {b}, A | {b}, s)     # tail recurse sideways, to remaining args
 
     def merge(G, X: {node}) -> state:
-      return merge_(G, X, {}, default-state)
-      # we could short-cut and check if X is empty or a singleton, but these
-      # cases are in fact already covered in the child functions
+      return merge_(G, X, {}, default-state)    # note 3
+
+1. See appendix (TODO: link) for an optimised "real implementation" of this.
+2. To reduce clutter, we assume 3-way-merge doesn't give merge conflicts.
+   Extending the code to handle that is a straightforward engineering exercise.
+3. We could short-cut ``merge`` to check if X is empty or a singleton, but
+   these cases are in fact already covered in the child functions.
 
 Now we can check that each input set is an anti-chain. Consider lcaU(A, b) and
 suppose we know A is an anti-chain. Then, if a |le| b for any a |in| A, either
@@ -459,7 +463,7 @@ a or b will be within the result of ``lcaU``. Equivalently, if lcaU(A, b) |cap|
 (A |cup| {b}) = |emptyset|, then we know that b is causally independent of all
 a |in| A. If we add this check to ``mergeU``, then ``merge_`` will start with a
 base case A = |emptyset| which is an anti-chain, and as it processes elements
-from B and moves them into A, it will by induction check all pairs (x, x') |in|
+from B and moves them into A, it will by induction check all pairs {x, x'} from
 X for causal independence.
 
 For our group session, we reject such inputs because they break our protocol
@@ -468,12 +472,12 @@ stack. [#tred]_ During run-time, whenever we accept a message m, we must check
 that merge(pre(m)) does not throw an exception. This enforces the transitive
 reduction property, as promised in the first chapter.
 
-Note: certain extreme history graphs can cause our recursive definition for
-``merge`` to stack overflow. It is possible to implement ``merge`` iteratively,
-but recursion from ``mergeU`` back to ``merge`` forces such an implementation
-to be very complex and hard to understand. A better solution is to simply add
-an LRU cache to ``merge``. This is sufficient to prevent overflow, as long as
-we run the aforementioned merge(pre(m)) check for every incoming message.
+Certain extreme history graphs can cause our recursive ``merge`` to stack
+overflow. It is possible to implement ``merge`` iteratively, but the non-tail
+recursion from ``mergeU`` back to ``merge`` forces such an implementation to be
+very complex and hard to understand. A better solution is to simply add an LRU
+cache to ``merge``. This is sufficient to prevent overflow, as long as we run
+the aforementioned merge(pre(m)) check for every accepted message.
 
 To summarise, if we fulfill the following requirements:
 
@@ -501,7 +505,7 @@ properties are:
   - merge(A |cup| B)
   - merge({v} |cup| B) where v = new node { parents = A, state = merge(A) }
 
-- conflict-free (i.e. never returns |bot|) if 3-way-merge is conflict-free
+- closed (i.e. free from merge-conflicts), if 3-way-merge is closed
 
 .. [#tred] For other systems, such as DVCSs, this is not such a crucial error;
     they can instead ignore the extraneous older nodes, and run the algorithm
@@ -510,7 +514,7 @@ properties are:
     note that it is not enough to let CHECK continue or e.g. ``return as``.
 
 .. [#idem] There is another nice property for 3-way-merge to have, but it's not
-    strictly necessary:
+    strictly necessary for us:
 
     `Idempotent <https://en.wikipedia.org/wiki/Idempotence>`_ under a fixed first argument
       |forall| o, a: 3-way-merge(o, a, a) = a
@@ -521,9 +525,9 @@ properties are:
     but it's not a *necessary* property. It has no effect on our derivation of
     the general merge algorithm, nor any other results here.
 
-    State-based CRDTs do mandate this because their systems can't deduplicate
-    identical events received more than once. We *can* do this though - and
-    it's a necessary aspect of protecting against replay attacks.
+    :ref:`State-based CRDTs <comparison-vs-crdts>` *do* require this, because
+    their systems can't deduplicate identical events received more than once.
+    We *can* do this - it's necessary, to protect against replay attacks.
 
 Other topics
 ============
